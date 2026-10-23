@@ -72,7 +72,12 @@ vi.mock("../../../src/services/article-saver", () => ({
 }));
 
 function cloneSettings(): RssDashboardSettings {
-  return JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) as RssDashboardSettings;
+  const settings = JSON.parse(
+    JSON.stringify(DEFAULT_SETTINGS),
+  ) as RssDashboardSettings;
+  // These tests cover saving the article as a note.
+  settings.articleSaving.taskNotePath = "";
+  return settings;
 }
 
 function makeFeed(url: string, items: Partial<FeedItem>[] = []): Feed {

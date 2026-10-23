@@ -22,6 +22,7 @@ export interface ArticleSavingPluginLike {
       fetchTimeout: number | undefined;
       defaultTemplate: string;
       savedTemplates?: SavedTemplate[] | undefined;
+      taskNotePath: string;
     };
   };
   saveSettings: () => Promise<void>;
@@ -32,6 +33,21 @@ export function renderArticleSavingSettingsTab(
   plugin: ArticleSavingPluginLike,
   onRefresh: () => void,
 ): void {
+  new Setting(containerEl)
+    .setName("Save button adds a task to")
+    .setDesc(
+      "The save button adds the article's link to the end of this note as an unchecked task. Leave empty to save each article as its own note instead.",
+    )
+    .addText((text) => {
+      text
+        .setPlaceholder("Folder/To-dos.md")
+        .setValue(plugin.settings.articleSaving.taskNotePath)
+        .onChange(async (value) => {
+          plugin.settings.articleSaving.taskNotePath = value.trim();
+          await plugin.saveSettings();
+        });
+    });
+
   new Setting(containerEl)
     .setName("Save path")
     .setDesc("Default folder to save articles")

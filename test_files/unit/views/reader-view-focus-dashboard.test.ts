@@ -42,7 +42,12 @@ describe("ReaderView dashboard refocus", () => {
     const leaf = new MockLeaf(app);
     const view = new ReaderView(
       leaf as never,
-      { ...DEFAULT_SETTINGS, useWebViewer: false },
+      {
+        ...DEFAULT_SETTINGS,
+        useWebViewer: false,
+        // These tests cover saving the article as a note.
+        articleSaving: { ...DEFAULT_SETTINGS.articleSaving, taskNotePath: "" },
+      },
       { saveArticle: saveArticleSpy } as never,
       vi.fn(),
       vi.fn(),

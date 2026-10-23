@@ -19,6 +19,7 @@ interface TestPlugin {
       fetchTimeout: number | undefined;
       defaultTemplate: string;
       savedTemplates: SavedTemplate[] | undefined;
+      taskNotePath: string;
     };
   };
   saveSettings: () => Promise<void>;
@@ -46,6 +47,7 @@ function createPlugin(overrides?: {
   fetchTimeout?: number | undefined;
   defaultTemplate?: string;
   savedTemplates?: SavedTemplate[] | undefined;
+  taskNotePath?: string;
 }): TestPlugin {
   const app = obsidian.App.createMock();
   const saveSettingsMock = vi.fn(async () => {});
@@ -59,6 +61,7 @@ function createPlugin(overrides?: {
         fetchTimeout: overrides?.fetchTimeout,
         defaultTemplate: overrides?.defaultTemplate ?? "TEMPLATE",
         savedTemplates: overrides?.savedTemplates,
+        taskNotePath: overrides?.taskNotePath ?? "",
       },
     },
     saveSettings: saveSettingsMock,

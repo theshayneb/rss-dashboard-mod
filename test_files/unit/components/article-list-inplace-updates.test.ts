@@ -18,6 +18,8 @@ describe("Phase 7 - ArticleList in-place updates", () => {
         display: {
           mobileListToolbarStyle: "left-grid",
         } as unknown as RssDashboardSettings["display"],
+        // Covers the save button that saves the article as a note.
+        articleSaving: { taskNotePath: "" },
       },
       articles: [
         buildArticle({

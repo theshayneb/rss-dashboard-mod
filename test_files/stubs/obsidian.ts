@@ -813,6 +813,17 @@ export class MockDataVault {
 
   async modify(_file: TFileStub, _content: string): Promise<void> {}
 
+  // Not probed: modeled like `read`, throwing ENOENT for a missing file, then
+  // writing back what `fn` returns.
+  async process(
+    file: TFileStub,
+    fn: (data: string) => string,
+  ): Promise<string> {
+    const next = fn(this.readFromDisk(file.path));
+    this.adapterFiles.set(file.path, next);
+    return next;
+  }
+
   async createFolder(folderPath: string): Promise<TFolderStub> {
     const cleanPath = folderPath.replace(/^\/+|\/+$/g, "");
     if (!cleanPath) return this.root;

@@ -281,6 +281,11 @@ export interface ArticleSavingSettings {
   saveFullContent: boolean;
   fetchTimeout: number;
   savedTemplates: SavedTemplate[];
+  /**
+   * Note the save button adds the article's link to, as an unchecked task.
+   * Empty saves the article as its own note instead.
+   */
+  taskNotePath: string;
 }
 
 export const IMAGE_CACHE_LIMIT_MIN_MIB = 1;
@@ -779,6 +784,7 @@ export const DEFAULT_SETTINGS: RssDashboardSettings = {
     defaultPlaySpeed: 1,
   },
   articleSaving: {
+    taskNotePath: "Planning & Productivity/To-Dos & Projects/Tasks & Chores.md",
     addSavedTag: true,
     defaultFolder: "RSS articles/",
     defaultTemplate: `---

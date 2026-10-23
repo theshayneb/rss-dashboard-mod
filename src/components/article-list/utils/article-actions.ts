@@ -72,22 +72,35 @@ export function createReadToggle(
   return readToggle;
 }
 
+function saveButtonLabel(
+  settings: CreateActionButtonArgs["settings"],
+): string {
+  if (settings.articleSaving?.taskNotePath) {
+    return "Add article link to your to-do note";
+  }
+  return settings.articleSaving?.saveFullContent
+    ? "Save full article content to notes"
+    : "Save article summary to notes";
+}
+
 export function createSaveButton(
   arg: Pick<
     CreateActionButtonArgs,
     "article" | "actionToolbar" | "settings" | "callbacks"
   >,
 ): HTMLElement {
+  // Adding a task link never saves the article, so the button keeps its
+  // add action instead of turning into "open saved article".
+  const showsSaved =
+    arg.article.saved && !arg.settings.articleSaving?.taskNotePath;
   const saveButton = arg.actionToolbar.createDiv({
-    cls: `rss-dashboard-save-toggle clickable-icon ${arg.article.saved ? "saved" : ""}`,
+    cls: `rss-dashboard-save-toggle clickable-icon ${showsSaved ? "saved" : ""}`,
     attr: {
       role: "button",
       tabindex: "0",
-      "aria-label": arg.article.saved
+      "aria-label": showsSaved
         ? "Click to open saved article"
-        : arg.settings.articleSaving?.saveFullContent
-          ? "Save full article content to notes"
-          : "Save article summary to notes",
+        : saveButtonLabel(arg.settings),
     },
   });
   setIcon(saveButton, "save");
@@ -99,7 +112,8 @@ export function createSaveButton(
     e.stopPropagation();
     e.preventDefault();
 
-    if (arg.article.saved) {
+    const addsTaskLink = Boolean(arg.settings.articleSaving?.taskNotePath);
+    if (arg.article.saved && !addsTaskLink) {
       if (arg.callbacks.onOpenSavedArticle) {
         await arg.callbacks.onOpenSavedArticle(arg.article);
       } else {
@@ -115,13 +129,17 @@ export function createSaveButton(
 
       try {
         await arg.callbacks.onArticleSave(arg.article);
-        arg.article.saved = true;
-        saveButton.classList.add("saved");
-        setIcon(saveButton, "save");
-        if (!saveButton.querySelector("svg")) {
-          saveButton.textContent = "S";
+        // The callback marks the article saved only when the save worked.
+        if (arg.article.saved && !addsTaskLink) {
+          saveButton.classList.add("saved");
+          setIcon(saveButton, "save");
+          if (!saveButton.querySelector("svg")) {
+            saveButton.textContent = "S";
+          }
+          setTooltip(saveButton, "Click to open saved article");
+        } else {
+          setTooltip(saveButton, saveButtonLabel(arg.settings));
         }
-        setTooltip(saveButton, "Click to open saved article");
       } catch (error) {
         console.error("Failed to save article via card button:", error);
         new Notice("Failed to save article.");
