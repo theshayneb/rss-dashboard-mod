@@ -69,8 +69,13 @@ import {
   ORIGINAL_PLUGIN_ID,
   ORIGINAL_PLUGIN_SOURCE_NAME,
   readOriginalPluginSnapshot,
-  relocatePluginFolderPaths,
 } from "./src/utils/original-plugin-import";
+import {
+  SYNCED_DATA_FOLDER,
+  SYNCED_FEEDS_FOLDER,
+  hasUnsyncableStorage,
+  relocateToSyncableFolders,
+} from "./src/utils/sync-folders";
 import {
   ImportExportService,
   type ImportConfirmation,
@@ -2319,14 +2324,9 @@ export default class RssDashboardPlugin extends Plugin {
       return "unavailable";
     }
 
-    const pluginDir = normalizePath(
-      this.manifest.dir ??
-        `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
-    );
-    const bundle = relocatePluginFolderPaths(
+    const bundle = relocateToSyncableFolders(
       parsePortableDataBundle(snapshot.bundle),
-      snapshot.pluginDir,
-      pluginDir,
+      this.app.vault.configDir,
     );
     const result = await this.importExportService.importPortableDataBundleFrom(
       bundle,
@@ -2340,6 +2340,39 @@ export default class RssDashboardPlugin extends Plugin {
       );
     }
     return result;
+  }
+
+  /** Whether some storage sits in a folder Obsidian Sync cannot carry. */
+  public hasUnsyncableStorage(): boolean {
+    return hasUnsyncableStorage(this.settings, this.app.vault.configDir);
+  }
+
+  /**
+   * Rewrites feed shards and article state into a vault folder Obsidian Sync
+   * carries, when they sit in a hidden folder or the plugin folder. Folders
+   * that already sync are kept. Returns whether anything moved.
+   */
+  public async moveStorageToSyncedFolder(): Promise<boolean> {
+    if (!this.hasUnsyncableStorage()) {
+      new Notice("Storage is already in folders that sync across devices.");
+      return false;
+    }
+    if (this.getUnloadedShardFeedCount() > 0) {
+      new Notice(
+        "Some feeds have no articles loaded on this device, so moving now would leave them behind. Wait for sync to finish, or rebuild storage, then try again.",
+      );
+      return false;
+    }
+
+    const bundle = relocateToSyncableFolders(
+      this.getPortableDataBundle(),
+      this.app.vault.configDir,
+    );
+    await this.applyPortableDataBundleImport(bundle);
+    new Notice(
+      `Feeds and article state now sync from the ${SYNCED_DATA_FOLDER} folder.`,
+    );
+    return true;
   }
 
   public async exportFeedBundle(): Promise<void> {
@@ -3048,17 +3081,13 @@ export default class RssDashboardPlugin extends Plugin {
       if (this.folderService) {
         this.bindSettingsBackedServices();
       }
-      // A fresh install keeps its feed shards and article state inside the
-      // plugin folder, so uninstalling the plugin removes them too. Only a
-      // null load is changed: existing installs keep the vault folder they
+      // A fresh install keeps its feed shards and article state in a visible
+      // vault folder that Obsidian Sync carries, the same on every device.
+      // Only a null load is changed: existing installs keep the folder they
       // already use, and a synced data.json that arrives later replaces this.
       if (data === null) {
-        const pluginDir = normalizePath(
-          this.manifest.dir ??
-            `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
-        );
-        this.settings.metadataStorageFolder = `${pluginDir}/data`;
-        this.settings.storageFolder = `${pluginDir}/data/feeds`;
+        this.settings.metadataStorageFolder = SYNCED_DATA_FOLDER;
+        this.settings.storageFolder = SYNCED_FEEDS_FOLDER;
       }
       const didMigrateKeywordRules = this.migrateLegacySettings();
       await this.repairMissingFolderPathsForFeeds();
@@ -3141,6 +3170,30 @@ export default class RssDashboardPlugin extends Plugin {
     );
   }
 
+  /**
+   * Called by Obsidian when data.json changes on disk from outside this
+   * plugin, such as Obsidian Sync delivering another device's settings.
+   */
+  async onExternalSettingsChange(): Promise<void> {
+    if (Date.now() < this.suppressWatcherUntil) return;
+    this.scheduleExternalSettingsReload();
+  }
+
+  /** Reloads settings once a burst of external changes has settled. */
+  private scheduleExternalSettingsReload(): void {
+    if (this.vaultMetadataReloadTimer !== null) {
+      window.clearTimeout(this.vaultMetadataReloadTimer);
+    }
+
+    this.vaultMetadataReloadTimer = window.setTimeout(() => {
+      this.vaultMetadataReloadTimer = null;
+      void (async () => {
+        await this.loadSettings();
+        await this.refreshDashboardViews();
+      })();
+    }, 1500);
+  }
+
   private registerVaultMetadataChangeListeners(): void {
     const vault = this.app.vault as unknown as {
       on?: (event: string, callback: (...args: unknown[]) => void) => EventRef;
@@ -3165,17 +3218,7 @@ export default class RssDashboardPlugin extends Plugin {
 
       if (!watched) return;
 
-      if (this.vaultMetadataReloadTimer !== null) {
-        window.clearTimeout(this.vaultMetadataReloadTimer);
-      }
-
-      this.vaultMetadataReloadTimer = window.setTimeout(() => {
-        this.vaultMetadataReloadTimer = null;
-        void (async () => {
-          await this.loadSettings();
-          await this.refreshDashboardViews();
-        })();
-      }, 1500);
+      this.scheduleExternalSettingsReload();
     };
 
     this.registerEvent(vault.on("modify", (file) => scheduleReload(file)));

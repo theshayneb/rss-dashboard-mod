@@ -2,6 +2,7 @@ import { App, Notice, TFile, TFolder, normalizePath } from "obsidian";
 import type {
   Feed,
   FeedBundle,
+  FeedItem,
   FeedItemsShard,
   PortableDataBundle,
   PersistedFeedConfig,
@@ -28,6 +29,51 @@ const USER_STATE_GC_HORIZON_MS = 90 * 24 * 60 * 60 * 1000;
 
 function userStateKey(feedId: string, guid: string): string {
   return `${feedId}:${guid}`;
+}
+
+/** An item's article state, in the shape `user-state.json` stores it. */
+function userStateFromItem(item: FeedItem): ArticleUserState {
+  const state: ArticleUserState = {
+    read: Boolean(item.read),
+    starred: Boolean(item.starred),
+    saved: Boolean(item.saved),
+  };
+  if (item.tags && item.tags.length > 0) state.tags = cloneJson(item.tags);
+  if (item.savedFilePath) state.savedFilePath = item.savedFilePath;
+  if (item.playbackProgress) state.playbackProgress = cloneJson(item.playbackProgress);
+  return state;
+}
+
+function applyUserStateToItem(item: FeedItem, state: ArticleUserState): void {
+  item.read = state.read ?? false;
+  item.starred = state.starred ?? false;
+  item.tags = state.tags ? cloneJson(state.tags) : [];
+  item.saved = state.saved ?? false;
+  if (state.savedFilePath) {
+    item.savedFilePath = state.savedFilePath;
+  } else {
+    delete item.savedFilePath;
+  }
+  if (state.playbackProgress) {
+    item.playbackProgress = cloneJson(state.playbackProgress);
+  } else {
+    delete item.playbackProgress;
+  }
+}
+
+/**
+ * Compares article states regardless of how they were written: a missing
+ * entry and an all-default one are the same state.
+ */
+function userStateSignature(state: ArticleUserState | undefined): string {
+  return JSON.stringify([
+    Boolean(state?.read),
+    Boolean(state?.starred),
+    Boolean(state?.saved),
+    state?.tags && state.tags.length > 0 ? state.tags : [],
+    state?.savedFilePath ?? "",
+    state?.playbackProgress ?? null,
+  ]);
 }
 
 function feedIdOfStateKey(key: string): string {
@@ -364,12 +410,15 @@ export class FeedStorageRepository {
    * `${feedId}:${guid}` keys of items whose in-memory flags are known to
    * reflect persisted user state this session (applied by `hydrateSettings`,
    * or adopted lazily by `saveUserStateFromFeeds` the first time a feed's
-   * item becomes available after missing that hydration pass). Until an
-   * item is in this set, its default `false` flags are unread parser output,
-   * not a deliberate reset, so a persisted entry for it must not be
-   * overwritten with those defaults (issue #278).
+   * item becomes available after missing that hydration pass), mapped to the
+   * state last read from or written to `user-state.json`. Until an item is
+   * here, its default `false` flags are unread parser output, not a
+   * deliberate reset, so a persisted entry for it must not be overwritten
+   * with those defaults (issue #278). Once it is, the recorded state is the
+   * merge base: an item this device has not changed since then takes the
+   * on-disk state, which another device may have changed through sync.
    */
-  private syncedUserStateKeys = new Set<string>();
+  private knownUserStateByKey = new Map<string, string>();
   private warnedUserStateUnreadable = false;
   private userStateUnreadable = false;
   private onUserStateHealthChange?: () => void;
@@ -619,7 +668,10 @@ export class FeedStorageRepository {
             delete item.savedFilePath;
             delete item.playbackProgress;
           }
-          this.syncedUserStateKeys.add(userStateKey(feedId, item.guid));
+          this.knownUserStateByKey.set(
+            userStateKey(feedId, item.guid),
+            userStateSignature(state),
+          );
         }
       }
     }
@@ -1764,17 +1816,26 @@ export class FeedStorageRepository {
         // parser output, not a deliberate reset. Adopt the disk truth for it
         // instead of overwriting that truth with those defaults, then treat
         // it as synced from here on so a genuine later reset is trusted.
-        if (!this.syncedUserStateKeys.has(key)) {
-          this.syncedUserStateKeys.add(key);
+        const knownState = this.knownUserStateByKey.get(key);
+        if (knownState === undefined) {
+          this.knownUserStateByKey.set(key, userStateSignature(baseline));
           if (baseline) {
-            item.read = baseline.read ?? false;
-            item.starred = baseline.starred ?? false;
-            item.tags = baseline.tags ? cloneJson(baseline.tags) : [];
-            item.saved = baseline.saved ?? false;
-            if (baseline.savedFilePath) item.savedFilePath = baseline.savedFilePath;
-            if (baseline.playbackProgress) item.playbackProgress = cloneJson(baseline.playbackProgress);
+            applyUserStateToItem(item, baseline);
             continue;
           }
+        } else if (
+          baseline &&
+          userStateSignature(userStateFromItem(item)) === knownState &&
+          userStateSignature(baseline) !== knownState
+        ) {
+          // Unchanged here since this device last read or wrote it, but
+          // changed on disk: another device's change arrived through sync.
+          // Keep it rather than overwrite it with this device's stale copy.
+          // A missing entry is not such a change: a reset is written as an
+          // entry, and the whole file may simply not have arrived yet.
+          this.knownUserStateByKey.set(key, userStateSignature(baseline));
+          applyUserStateToItem(item, baseline);
+          continue;
         }
 
         const hasSignal = Boolean(
@@ -1784,15 +1845,9 @@ export class FeedStorageRepository {
           continue;
         }
 
-        const state: ArticleUserState = {
-          read: Boolean(item.read),
-          starred: Boolean(item.starred),
-          saved: Boolean(item.saved),
-        };
-        if (item.tags && item.tags.length > 0) state.tags = cloneJson(item.tags);
-        if (item.savedFilePath) state.savedFilePath = item.savedFilePath;
-        if (item.playbackProgress) state.playbackProgress = cloneJson(item.playbackProgress);
+        const state = userStateFromItem(item);
         states[key] = state;
+        this.knownUserStateByKey.set(key, userStateSignature(state));
       }
     }
 

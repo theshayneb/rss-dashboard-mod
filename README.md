@@ -81,6 +81,15 @@ BRAT picks up each new release from this repository's Releases page.
 3. Review the confirmation and click to import.
 4. Disable the original plugin, then reload Obsidian.
 
+### Sync with Obsidian Sync
+
+Feeds, settings, and read, starred, and tag state sync across devices once both of these are true:
+
+1. On **every** device, open **Settings → Sync** and turn on **Sync all other types**, **Active community plugin list**, and **Installed community plugin list**.
+2. In **Settings → RSS Dashboard (Mod) → Storage**, **Sync across devices** says storage is in folders Obsidian Sync carries. If it doesn't, click **Move to synced folder** on the device that has your data, and wait for Sync to finish before opening the plugin on other devices.
+
+On a new device, let Sync report **Fully synced** before enabling the plugin, as described in [Syncing across devices](docs/syncing.md).
+
 ### Releasing
 
 Bump the version with `npm version <x.y.z> --no-git-tag-version` (updates `package.json`, `manifest.json`, and `versions.json`), add a `CHANGELOG.md` entry, commit, then push a tag with the same version and no leading `v`, e.g. `git tag 2.7.3 && git push origin 2.7.3`. The release workflow builds and publishes the release BRAT installs. Tags like `2.8.0-beta.1` publish as prereleases. You can also run the **Release Obsidian plugin** workflow by hand from the Actions tab to release the version in `manifest.json` from a branch.

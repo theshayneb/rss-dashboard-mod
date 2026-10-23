@@ -1,3 +1,12 @@
+## 2.7.4 - October 23, 2026 (RSS Dashboard Mod)
+
+### Features
+
+- Read, starred, and tag changes made on one device are no longer undone by another. Before, each save rewrote every loaded article's state from that device's memory, so a device that had not yet reloaded another device's synced `user-state.json` put those articles back the way it last saw them. Now an article this device has not changed keeps the state on disk.
+- Settings that Obsidian Sync brings in from another device (`data.json`) are reloaded while Obsidian is open, instead of only after a restart.
+- New installs keep feed shards and article state in the `rss-dashboard-mod-data` vault folder, which Obsidian Sync carries, instead of inside the plugin folder, which it does not.
+- **Settings → Storage → Sync across devices** shows whether storage is in folders Obsidian Sync carries. When it isn't, **Move to synced folder** moves feeds and article state into `rss-dashboard-mod-data`. **Import from original RSS dashboard** now moves the same way.
+
 ## 2.7.3 - October 23, 2026 (RSS Dashboard Mod)
 
 ### Fixes

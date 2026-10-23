@@ -17,6 +17,7 @@ import { setCssProps } from "../../utils/platform-utils";
 import { trashVaultFile, vaultFileExists } from "../../utils/vault-files";
 import { PLUGIN_ID } from "../../utils/plugin-id";
 import { ORIGINAL_PLUGIN_ID } from "../../utils/original-plugin-import";
+import { SYNCED_DATA_FOLDER } from "../../utils/sync-folders";
 import { DEFAULT_SETTINGS, type RssDashboardSettings } from "../../types/types";
 import {
   MetadataCleanupModal,
@@ -59,6 +60,8 @@ interface StorageSettingsPlugin {
   repairVaultStorage(): Promise<RepairResult>;
   importPortableDataBundleFromFile(file: File): Promise<ImportResult>;
   importFromOriginalPlugin(): Promise<ImportResult | "unavailable">;
+  hasUnsyncableStorage(): boolean;
+  moveStorageToSyncedFolder(): Promise<boolean>;
   exportPortableDataBundle(): Promise<void>;
   importFeedBundleFromFile(file: File): Promise<ImportResult>;
   exportFeedBundle(): Promise<void>;
@@ -424,6 +427,41 @@ export function renderStorageSettingsTab(
     );
     leftoverStateSetting.settingEl.hidden = false;
   });
+
+  const syncSetting = new Setting(containerEl).setName("Sync across devices");
+  const syncSettingsHint =
+    "On every device, in Obsidian's Sync settings, turn on syncing for all other file types and for the active and installed community plugin lists.";
+  if (plugin.hasUnsyncableStorage()) {
+    syncSetting
+      .setDesc(
+        `Feeds or read, starred, and tag state are stored in a hidden folder or the plugin folder, which Obsidian Sync skips. Move them to the ${SYNCED_DATA_FOLDER} folder so your other devices get them. ${syncSettingsHint}`,
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Move to synced folder")
+          .setCta()
+          .onClick(() => {
+            void (async () => {
+              try {
+                if (await plugin.moveStorageToSyncedFolder()) {
+                  plugin.settingTab?.display();
+                }
+              } catch (error) {
+                storageError("Move to synced folder failed", error);
+                new Notice(
+                  `Move to synced folder failed${
+                    error instanceof Error ? `: ${error.message}` : ""
+                  }`,
+                );
+              }
+            })();
+          }),
+      );
+  } else {
+    syncSetting.setDesc(
+      `Feeds, settings, and read, starred, and tag state are in folders Obsidian Sync carries. ${syncSettingsHint}`,
+    );
+  }
 
   if (PLUGIN_ID !== ORIGINAL_PLUGIN_ID) {
     new Setting(containerEl)

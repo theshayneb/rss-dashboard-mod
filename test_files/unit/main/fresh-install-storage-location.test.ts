@@ -74,15 +74,16 @@ beforeEach(() => {
 });
 
 describe("Storage location for a fresh install", () => {
-  it("keeps feed shards and article state inside the plugin folder", async () => {
+  it("keeps feed shards and article state in a vault folder Obsidian Sync carries", async () => {
     const app = App.createMock();
     const { plugin } = await launch(app, null);
 
     await addFeedAndSave(plugin);
 
     const adapter = app.vault.adapter;
-    expect(await adapter.exists(`${PLUGIN_DIR}/data/feeds/feed-1.json`)).toBe(true);
-    expect(await adapter.exists(`${PLUGIN_DIR}/data/user-state.json`)).toBe(true);
+    expect(await adapter.exists("rss-dashboard-mod-data/feeds/feed-1.json")).toBe(true);
+    expect(await adapter.exists("rss-dashboard-mod-data/user-state.json")).toBe(true);
+    expect(await adapter.exists(`${PLUGIN_DIR}/data/user-state.json`)).toBe(false);
     expect(await adapter.exists(".rss-dashboard-data/user-state.json")).toBe(false);
     expect(await adapter.exists(".rss-dashboard-data/feeds/feed-1.json")).toBe(false);
   });
@@ -94,8 +95,8 @@ describe("Storage location for a fresh install", () => {
 
     const { plugin } = await launch(app, first.persisted());
 
-    expect(plugin.settings.storageFolder).toBe(`${PLUGIN_DIR}/data/feeds`);
-    expect(plugin.settings.metadataStorageFolder).toBe(`${PLUGIN_DIR}/data`);
+    expect(plugin.settings.storageFolder).toBe("rss-dashboard-mod-data/feeds");
+    expect(plugin.settings.metadataStorageFolder).toBe("rss-dashboard-mod-data");
     const [item] = plugin.settings.feeds[0]?.items ?? [];
     expect(item?.read).toBe(true);
     expect(item?.starred).toBe(true);
