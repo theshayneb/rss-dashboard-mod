@@ -43,6 +43,7 @@ function cloneDefaultSettings(): ArticleSavingSettings {
     saveFullContent: true,
     fetchTimeout: 30_000,
     savedTemplates: [],
+    taskNotePath: "",
   };
 }
 

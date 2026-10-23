@@ -16,6 +16,7 @@ export interface ArticleContext {
   settings: {
     articleSaving: {
       saveFullContent: boolean;
+      taskNotePath?: string;
     };
   };
 }
@@ -127,14 +128,16 @@ export function showArticleContextMenu(
       });
   });
 
-  if (!article.saved) {
+  if (!article.saved || ctx.settings.articleSaving.taskNotePath) {
     menu.addSeparator();
     menu.addItem((item: MenuItem) => {
       item
         .setTitle(
-          ctx.settings.articleSaving.saveFullContent
-            ? "Save full article"
-            : "Save article summary",
+          ctx.settings.articleSaving.taskNotePath
+            ? "Add link to to-do note"
+            : ctx.settings.articleSaving.saveFullContent
+              ? "Save full article"
+              : "Save article summary",
         )
         .setIcon("save")
         .onClick(() => {

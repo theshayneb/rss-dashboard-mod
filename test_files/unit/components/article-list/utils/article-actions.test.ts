@@ -5,6 +5,7 @@ import {
   createStarToggle,
   createTagsToggle,
   createActionButtons,
+  createSaveButton,
   type CreateActionButtonArgs,
 } from "../../../../../src/components/article-list/utils/article-actions";
 
@@ -133,6 +134,48 @@ describe("article-actions utils", () => {
       expect(actionToolbar.querySelector(".rss-dashboard-save-toggle")).toBeFalsy();
       expect(actionToolbar.querySelector(".rss-dashboard-star-toggle")).toBeFalsy();
       expect(actionToolbar.querySelector(".rss-dashboard-tags-toggle")).toBeFalsy();
+    });
+  });
+
+  describe("createSaveButton with a to-do note set", () => {
+    const taskSettings = { articleSaving: { taskNotePath: "Tasks.md" } };
+
+    it("adds the link again instead of opening an article saved earlier", async () => {
+      article.saved = true;
+      article.savedFilePath = "RSS articles/Test Article.md";
+      const onArticleSave = vi.fn();
+      const onOpenSavedArticle = vi.fn();
+      const button = createSaveButton(
+        baseArgs({
+          settings: taskSettings,
+          callbacks: { onArticleSave, onOpenSavedArticle },
+        }),
+      );
+
+      button.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(onArticleSave).toHaveBeenCalledWith(article);
+      expect(onOpenSavedArticle).not.toHaveBeenCalled();
+    });
+
+    it("stays an add button after adding, rather than showing as saved", async () => {
+      const button = createSaveButton(
+        baseArgs({
+          settings: taskSettings,
+          callbacks: { onArticleSave: vi.fn() },
+        }),
+      );
+
+      button.click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(button.classList.contains("saved")).toBe(false);
+      expect(button.getAttribute("aria-label")).toBe(
+        "Add article link to your to-do note",
+      );
     });
   });
 });

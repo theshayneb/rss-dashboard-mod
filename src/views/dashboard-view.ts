@@ -55,6 +55,10 @@ import {
 import { setupDashboardHotkeys } from "../hotkeys/dashboard-hotkeys";
 import { scheduleProcessMathElements } from "../utils/math-rendering";
 import {
+  addArticleLinkTask,
+  describeTaskLinkResult,
+} from "../services/task-link-saver";
+import {
   handleReaderMathCopy,
   trackReaderMathSelection,
 } from "../utils/math-copy";
@@ -549,7 +553,10 @@ export class RssDashboardView extends ItemView {
    */
   public async actionSaveSelectedArticle(): Promise<void> {
     if (this.selectedArticle) {
-      if (this.selectedArticle.saved) {
+      if (
+        this.selectedArticle.saved &&
+        !this.settings.articleSaving.taskNotePath
+      ) {
         await this.handleOpenSavedArticle(this.selectedArticle);
       } else {
         await this.handleArticleSave(this.selectedArticle);
@@ -2971,6 +2978,15 @@ export class RssDashboardView extends ItemView {
   }
 
   private async handleArticleSave(article: FeedItem): Promise<void> {
+    const taskNotePath = this.settings.articleSaving.taskNotePath;
+    if (taskNotePath) {
+      // Only records the online article's link; the article itself is not
+      // saved, so the button never opens a note in the vault.
+      const result = await addArticleLinkTask(this.app, taskNotePath, article);
+      new Notice(describeTaskLinkResult(result));
+      return;
+    }
+
     // Find the feed to check for custom template
     const feed = this.settings.feeds.find(
       (f: Feed) => f.url === article.feedUrl,
@@ -4313,8 +4329,10 @@ export class RssDashboardView extends ItemView {
     if (this.inlineArticle) {
       const actions = header.createDiv({ cls: "rss-reader-actions" });
 
+      const showsSaved =
+        this.inlineArticle.saved && !this.settings.articleSaving.taskNotePath;
       const saveButton = actions.createDiv({
-        cls: `rss-reader-action-button${this.inlineArticle.saved ? " saved" : ""}`,
+        cls: `rss-reader-action-button${showsSaved ? " saved" : ""}`,
         attr: { "aria-label": "Save article" },
       });
       setIcon(saveButton, "save");

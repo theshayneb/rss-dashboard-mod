@@ -25,6 +25,7 @@ function createSettings(
     saveFullContent: false,
     fetchTimeout: 30_000,
     savedTemplates: [],
+    taskNotePath: "",
     ...overrides,
   };
 }

@@ -1,3 +1,9 @@
+## 2.7.5 - October 23, 2026 (RSS Dashboard Mod)
+
+### Features
+
+- The save (floppy disk) button now adds the online article's link to the end of `Planning & Productivity/To-Dos & Projects/Tasks & Chores.md` as an unchecked task (`- [ ] [Title](link)`), instead of saving the article as a note. It doesn't mark the article saved or open anything in the vault, and it won't add the same link twice. If that exact path doesn't exist, the only note named `Tasks & Chores.md` is used. Change the note, or clear it to save articles as notes again, under **Settings → Article saving → Save button adds a task to**.
+
 ## 2.7.4 - October 23, 2026 (RSS Dashboard Mod)
 
 ### Features

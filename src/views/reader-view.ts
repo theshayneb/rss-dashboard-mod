@@ -24,6 +24,10 @@ import { sanitizeAndAppendHtml } from "../utils/safe-html";
 import { type FullArticleFetchFailureType } from "../utils/fetch-helpers";
 import { PLUGIN_ID } from "../utils/plugin-id";
 import {
+  addArticleLinkTask,
+  describeTaskLinkResult,
+} from "../services/task-link-saver";
+import {
   RssDashboardSettings,
   FeedItem,
   ReaderFormatSettings,
@@ -588,6 +592,10 @@ export class ReaderView extends ItemView {
     if (!this.currentItem) {
       return;
     }
+    if (this.settings.articleSaving.taskNotePath) {
+      await this.addLinkToTaskNote(this.currentItem);
+      return;
+    }
     if (this.currentItem.saved) {
       const file = this.app.vault.getAbstractFileByPath(
         this.currentItem.savedFilePath || "",
@@ -851,6 +859,10 @@ export class ReaderView extends ItemView {
 
     setIcon(this.saveButton, "save");
     this.saveButton.addEventListener("click", (e) => {
+      if (this.currentItem && this.settings.articleSaving.taskNotePath) {
+        void this.addLinkToTaskNote(this.currentItem);
+        return;
+      }
       if (this.currentItem && this.currentItem.saved) {
         const file = this.app.vault.getAbstractFileByPath(
           this.currentItem.savedFilePath || "",
@@ -1104,6 +1116,19 @@ export class ReaderView extends ItemView {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Adds the online article's link to the to-do note as a task. The article
+   * is not saved, and nothing in the vault is opened.
+   */
+  private async addLinkToTaskNote(item: FeedItem): Promise<void> {
+    const result = await addArticleLinkTask(
+      this.app,
+      this.settings.articleSaving.taskNotePath,
+      item,
+    );
+    new Notice(describeTaskLinkResult(result));
   }
 
   private showSaveOptions(event: MouseEvent, item: FeedItem): void {
@@ -3304,11 +3329,16 @@ export class ReaderView extends ItemView {
 
     // Update save button state
     if (this.saveButton) {
-      const isSaved = Boolean(this.currentItem.saved);
+      const taskNotePath = this.settings.articleSaving.taskNotePath;
+      const isSaved = Boolean(this.currentItem.saved) && !taskNotePath;
       this.saveButton.toggleClass("saved", isSaved);
       setTooltip(
         this.saveButton,
-        isSaved ? "Click to open saved article" : "Save article",
+        taskNotePath
+          ? "Add article link to your to-do note"
+          : isSaved
+            ? "Click to open saved article"
+            : "Save article",
       );
     }
   }
