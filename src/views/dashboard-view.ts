@@ -194,7 +194,7 @@ export class RssDashboardView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "RSS dashboard";
+    return "RSS reader";
   }
 
   getIcon(): string {

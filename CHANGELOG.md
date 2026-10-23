@@ -1,3 +1,9 @@
+## 2.7.6 - October 23, 2026 (RSS Reader)
+
+### Changes
+
+- Renamed the plugin to **RSS Reader**, including the dashboard tab title and ribbon icon tooltip. The plugin id stays `rss-dashboard-mod`, so feeds, settings, and article state carry over.
+
 ## 2.7.5 - October 23, 2026 (RSS Dashboard Mod)
 
 ### Features
