@@ -59,7 +59,7 @@ import {
   trackReaderMathSelection,
 } from "../utils/math-copy";
 
-export const RSS_DASHBOARD_VIEW_TYPE = "rss-dashboard-view";
+export const RSS_DASHBOARD_VIEW_TYPE = "rss-dashboard-mod-view";
 
 type SidebarKeyboardController = {
   focusSidebar: () => void;

@@ -71,7 +71,7 @@ vi.mock("../../../src/modals/mobile-navigation-modal", () => ({
 
 vi.mock("../../../src/views/reader-view", () => ({
   ReaderView: class ReaderViewMock {},
-  RSS_READER_VIEW_TYPE: "rss-reader-view",
+  RSS_READER_VIEW_TYPE: "rss-dashboard-mod-reader-view",
 }));
 
 vi.mock("../../../src/services/article-saver", () => ({

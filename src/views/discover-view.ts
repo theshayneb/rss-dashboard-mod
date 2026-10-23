@@ -33,7 +33,7 @@ import {
 
 import feedsData from "../discover/discover-feeds.json";
 
-export const RSS_DISCOVER_VIEW_TYPE = "rss-discover-view";
+export const RSS_DISCOVER_VIEW_TYPE = "rss-dashboard-mod-discover-view";
 
 export class DiscoverView extends ItemView {
   private settings: RssDashboardSettings;

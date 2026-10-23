@@ -90,7 +90,7 @@ const STARRED_IMPORT_OPEN_IN_BROWSER_TEXT = "Open in Browser";
 const STARRED_IMPORT_FETCH_FAILED_NOTICE =
   "Could not fetch full article content.";
 
-export const RSS_READER_VIEW_TYPE = "rss-reader-view";
+export const RSS_READER_VIEW_TYPE = "rss-dashboard-mod-reader-view";
 
 export class ReaderView extends ItemView {
   private currentItem: FeedItem | null = null;

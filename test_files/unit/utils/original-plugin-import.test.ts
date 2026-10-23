@@ -11,6 +11,10 @@ import {
   relocatePluginFolderPaths,
 } from "../../../src/utils/original-plugin-import";
 import type { PortableDataBundle } from "../../../src/types/types";
+import { RSS_DASHBOARD_VIEW_TYPE } from "../../../src/views/dashboard-view";
+import { RSS_DISCOVER_VIEW_TYPE } from "../../../src/views/discover-view";
+import { RSS_READER_VIEW_TYPE } from "../../../src/views/reader-view";
+import { RSS_SMALLWEB_VIEW_TYPE } from "../../../src/views/kagi-smallweb-view";
 
 function appWith(plugin: unknown): App {
   return {
@@ -111,5 +115,27 @@ describe("relocatePluginFolderPaths()", () => {
     );
 
     expect(result.storageFolder).toBe(`${from}-other/feeds`);
+  });
+});
+
+describe("running alongside the original plugin", () => {
+  it("registers view types the original plugin does not, so both can load", () => {
+    // Obsidian throws when a second plugin registers an existing view type,
+    // which would stop this plugin loading while the original is enabled.
+    const originalViewTypes = [
+      "rss-dashboard-view",
+      "rss-discover-view",
+      "rss-reader-view",
+      "rss-smallweb-view",
+    ];
+
+    for (const viewType of [
+      RSS_DASHBOARD_VIEW_TYPE,
+      RSS_DISCOVER_VIEW_TYPE,
+      RSS_READER_VIEW_TYPE,
+      RSS_SMALLWEB_VIEW_TYPE,
+    ]) {
+      expect(originalViewTypes).not.toContain(viewType);
+    }
   });
 });

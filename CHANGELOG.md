@@ -1,3 +1,9 @@
+## 2.7.3 - October 23, 2026 (RSS Dashboard Mod)
+
+### Fixes
+
+- Fixed RSS Dashboard (Mod) failing to load while the original RSS Dashboard is enabled, which made **Import from original RSS dashboard** unreachable. The two plugins registered the same view types; this fork now uses its own (`rss-dashboard-mod-view`, `rss-dashboard-mod-reader-view`, `rss-dashboard-mod-discover-view`, `rss-dashboard-mod-smallweb-view`).
+
 ## 2.7.2 - October 23, 2026 (RSS Dashboard Mod)
 
 First release of this fork, installable through BRAT from `theshayneb/rss-dashboard-mod`.
