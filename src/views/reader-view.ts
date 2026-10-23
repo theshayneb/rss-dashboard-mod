@@ -22,6 +22,7 @@ import {
 } from "../utils/math-copy";
 import { sanitizeAndAppendHtml } from "../utils/safe-html";
 import { type FullArticleFetchFailureType } from "../utils/fetch-helpers";
+import { PLUGIN_ID } from "../utils/plugin-id";
 import {
   RssDashboardSettings,
   FeedItem,
@@ -2940,9 +2941,9 @@ export class ReaderView extends ItemView {
     const plugins = appWithPlugins.plugins;
     const pluginByGetter =
       typeof plugins?.getPlugin === "function"
-        ? (plugins.getPlugin("rss-dashboard") as TagsPlugin | null)
+        ? (plugins.getPlugin(PLUGIN_ID) as TagsPlugin | null)
         : null;
-    const pluginByRegistry = plugins?.plugins?.["rss-dashboard"] as
+    const pluginByRegistry = plugins?.plugins?.[PLUGIN_ID] as
       | TagsPlugin
       | undefined;
 
@@ -2953,7 +2954,7 @@ export class ReaderView extends ItemView {
     }
 
     appWithPlugins.setting?.open?.();
-    appWithPlugins.setting?.openTabById?.("rss-dashboard");
+    appWithPlugins.setting?.openTabById?.(PLUGIN_ID);
   }
 
   private refreshReaderHeaderTags(): void {
@@ -3156,9 +3157,9 @@ export class ReaderView extends ItemView {
 
       const pluginByGetter =
         typeof plugins.getPlugin === "function"
-          ? plugins.getPlugin("rss-dashboard")
+          ? plugins.getPlugin(PLUGIN_ID)
           : null;
-      const pluginByRegistry = plugins.plugins?.["rss-dashboard"];
+      const pluginByRegistry = plugins.plugins?.[PLUGIN_ID];
 
       const plugin = (pluginByGetter || pluginByRegistry) as
         | {
@@ -3200,9 +3201,9 @@ export class ReaderView extends ItemView {
     const plugins = appWithPlugins.plugins;
     const pluginByGetter =
       typeof plugins?.getPlugin === "function"
-        ? (plugins.getPlugin("rss-dashboard") as SettingsPlugin | null)
+        ? (plugins.getPlugin(PLUGIN_ID) as SettingsPlugin | null)
         : null;
-    const pluginByRegistry = plugins?.plugins?.["rss-dashboard"] as
+    const pluginByRegistry = plugins?.plugins?.[PLUGIN_ID] as
       | SettingsPlugin
       | undefined;
 
@@ -3213,7 +3214,7 @@ export class ReaderView extends ItemView {
     }
 
     appWithPlugins.setting?.open?.();
-    appWithPlugins.setting?.openTabById?.("rss-dashboard");
+    appWithPlugins.setting?.openTabById?.(PLUGIN_ID);
   }
 
   private async flushReaderFormatSave(): Promise<void> {

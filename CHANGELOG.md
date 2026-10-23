@@ -1,3 +1,17 @@
+## 2.7.2 - October 23, 2026 (RSS Dashboard Mod)
+
+First release of this fork, installable through BRAT from `theshayneb/rss-dashboard-mod`.
+
+### Features
+
+- The plugin is now **RSS Dashboard (Mod)** with the id `rss-dashboard-mod`, so it installs next to the original RSS Dashboard instead of replacing it, and the original's updates can't overwrite it.
+- Added **Import from original RSS Dashboard** under **Settings → Storage**, also available from the command palette. With the original plugin still enabled, it copies feeds, folders, tags, articles, article state, and settings into this plugin after the usual import confirmation. Storage the original keeps inside its own plugin folder is moved into this plugin's folder.
+
+### Development and compliance
+
+- Tagged releases are now published rather than left as drafts, so BRAT can install them. The release workflow can also be run by hand to release the version in `manifest.json`.
+- Updated the `vite` and `source-map-js` development dependencies to clear high-severity `npm audit` advisories that failed CI.
+
 ## 2.7.1 - October 3, 2026
 
 For a user-facing overview, see the [RSS Dashboard 2.7.1 release notes](docs/releases/2.7.1.md).

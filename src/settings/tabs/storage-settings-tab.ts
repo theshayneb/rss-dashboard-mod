@@ -15,6 +15,8 @@ import type { ImportResult } from "../../services/import-export-service";
 import { FolderSuggest } from "../../components/folder-suggest";
 import { setCssProps } from "../../utils/platform-utils";
 import { trashVaultFile, vaultFileExists } from "../../utils/vault-files";
+import { PLUGIN_ID } from "../../utils/plugin-id";
+import { ORIGINAL_PLUGIN_ID } from "../../utils/original-plugin-import";
 import { DEFAULT_SETTINGS, type RssDashboardSettings } from "../../types/types";
 import {
   MetadataCleanupModal,
@@ -56,6 +58,7 @@ interface StorageSettingsPlugin {
   previewRepairVaultStorage(): Promise<RepairPreview>;
   repairVaultStorage(): Promise<RepairResult>;
   importPortableDataBundleFromFile(file: File): Promise<ImportResult>;
+  importFromOriginalPlugin(): Promise<ImportResult | "unavailable">;
   exportPortableDataBundle(): Promise<void>;
   importFeedBundleFromFile(file: File): Promise<ImportResult>;
   exportFeedBundle(): Promise<void>;
@@ -206,7 +209,7 @@ export function renderStorageSettingsTab(
     }
   };
 
-  const pluginDefaultMetadataFilePath = `${plugin.app.vault.configDir}/plugins/rss-dashboard/data.json`;
+  const pluginDefaultMetadataFilePath = `${plugin.app.vault.configDir}/plugins/${PLUGIN_ID}/data.json`;
   let pendingMetadataStorageFolder =
     plugin.settings.metadataStorageMode === "vault-location"
       ? plugin.settings.metadataStorageFolder
@@ -421,6 +424,30 @@ export function renderStorageSettingsTab(
     );
     leftoverStateSetting.settingEl.hidden = false;
   });
+
+  if (PLUGIN_ID !== ORIGINAL_PLUGIN_ID) {
+    new Setting(containerEl)
+      .setName("Import from original RSS dashboard")
+      .setDesc(
+        "Copy feeds, folders, tags, articles, and settings from the original RSS dashboard plugin, replacing what this plugin has now. Keep the original plugin enabled until the import finishes.",
+      )
+      .addButton((button) =>
+        button.setButtonText("Import from original").onClick(() => {
+          void (async () => {
+            try {
+              await plugin.importFromOriginalPlugin();
+            } catch (error) {
+              storageError("Import from original plugin failed", error);
+              new Notice(
+                `Import from original RSS dashboard failed${
+                  error instanceof Error ? `: ${error.message}` : ""
+                }`,
+              );
+            }
+          })();
+        }),
+      );
+  }
 
   new Setting(containerEl)
     .setName("Repair/rebuild storage")

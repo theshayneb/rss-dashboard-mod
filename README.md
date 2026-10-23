@@ -61,6 +61,30 @@ Version 2.2.0 demo (core experience remains similar).
 
 [![What's New in 2.2.0?](assets/2.2/video_thumbnail/2.2_Dashboard_video_thumbnail_youtube_icon.png)](https://www.youtube.com/watch?v=Lq2TRCZlqlQ)
 
+## This fork: RSS Dashboard (Mod)
+
+This repository is a personal fork, published as **RSS Dashboard (Mod)** with the plugin id `rss-dashboard-mod`, so it installs next to the original plugin rather than replacing it.
+
+### Install with BRAT
+
+1. Install **BRAT** from Obsidian's Community Plugins browser.
+2. Run `BRAT: Add a beta plugin for testing` from the command palette.
+3. Paste `https://github.com/theshayneb/rss-dashboard-mod` and choose the latest version.
+4. Enable **RSS Dashboard (Mod)** under **Settings → Community plugins**.
+
+BRAT picks up each new release from this repository's Releases page.
+
+### Move your data from the original plugin
+
+1. Keep the original **RSS Dashboard** enabled, and enable **RSS Dashboard (Mod)** alongside it.
+2. In **Settings → RSS Dashboard (Mod) → Storage**, click **Import from original**, or run `Import feeds and settings from original RSS dashboard` from the command palette.
+3. Review the confirmation and click to import.
+4. Disable the original plugin, then reload Obsidian.
+
+### Releasing
+
+Bump the version with `npm version <x.y.z> --no-git-tag-version` (updates `package.json`, `manifest.json`, and `versions.json`), add a `CHANGELOG.md` entry, commit, then push a tag with the same version and no leading `v`, e.g. `git tag 2.7.3 && git push origin 2.7.3`. The release workflow builds and publishes the release BRAT installs. Tags like `2.8.0-beta.1` publish as prereleases. You can also run the **Release Obsidian plugin** workflow by hand from the Actions tab to release the version in `manifest.json` from a branch.
+
 ## Installation
 
 1. Open **Settings** in Obsidian.

@@ -63,7 +63,14 @@ import {
   type RepairPreview,
   type RepairResult,
   ShardFolderDeletionError,
+  parsePortableDataBundle,
 } from "./src/services/feed-storage-repository";
+import {
+  ORIGINAL_PLUGIN_ID,
+  ORIGINAL_PLUGIN_SOURCE_NAME,
+  readOriginalPluginSnapshot,
+  relocatePluginFolderPaths,
+} from "./src/utils/original-plugin-import";
 import {
   ImportExportService,
   type ImportConfirmation,
@@ -1250,6 +1257,23 @@ export default class RssDashboardPlugin extends Plugin {
         },
       });
 
+      if (this.manifest.id !== ORIGINAL_PLUGIN_ID) {
+        this.addCommand({
+          id: "import-from-original-plugin",
+          name: "Import feeds and settings from original RSS dashboard",
+          callback: () => {
+            void this.importFromOriginalPlugin().catch((error: unknown) => {
+              storageError("Import from original plugin failed", error);
+              new Notice(
+                `Import from original RSS dashboard failed${
+                  error instanceof Error ? `: ${error.message}` : ""
+                }`,
+              );
+            });
+          },
+        });
+      }
+
       this.addCommand({
         id: "import-usersettings-json",
         name: "Import user preferences",
@@ -2274,6 +2298,46 @@ export default class RssDashboardPlugin extends Plugin {
       this.showImportCanceledNotice();
     } else {
       new Notice("Portable data bundle imported");
+    }
+    return result;
+  }
+
+  /**
+   * Imports feeds, articles, and settings from the original RSS Dashboard
+   * plugin, which must be enabled alongside this fork while it runs.
+   */
+  public async importFromOriginalPlugin(): Promise<ImportResult | "unavailable"> {
+    if (this.manifest.id === ORIGINAL_PLUGIN_ID) {
+      return "unavailable";
+    }
+
+    const snapshot = readOriginalPluginSnapshot(this.app);
+    if (!snapshot) {
+      new Notice(
+        "Enable the original RSS dashboard plugin first, then run the import again.",
+      );
+      return "unavailable";
+    }
+
+    const pluginDir = normalizePath(
+      this.manifest.dir ??
+        `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
+    );
+    const bundle = relocatePluginFolderPaths(
+      parsePortableDataBundle(snapshot.bundle),
+      snapshot.pluginDir,
+      pluginDir,
+    );
+    const result = await this.importExportService.importPortableDataBundleFrom(
+      bundle,
+      ORIGINAL_PLUGIN_SOURCE_NAME,
+    );
+    if (result === "canceled") {
+      this.showImportCanceledNotice();
+    } else {
+      new Notice(
+        "Imported from the original RSS dashboard. You can disable it now.",
+      );
     }
     return result;
   }
