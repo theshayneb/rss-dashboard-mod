@@ -14,7 +14,7 @@ const PLUGIN_DIR = "config/plugins/rss-dashboard-mod";
 function manifest(): PluginManifest {
   return {
     id: "rss-dashboard-mod",
-    name: "RSS Dashboard (Mod)",
+    name: "RSS Reader",
     version: "2.7.4",
     minAppVersion: "1.8.7",
     author: "test",

@@ -1206,7 +1206,7 @@ export default class RssDashboardPlugin extends Plugin {
         (leaf) => new KagiSmallwebView(leaf, this),
       );
 
-      this.addRibbonIcon("compass", "RSS dashboard", () => {
+      this.addRibbonIcon("compass", "RSS reader", () => {
         void this.activateView();
       });
 
