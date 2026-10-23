@@ -47,7 +47,7 @@ function buildFeed(feedUpdated: string, entryUpdated: string): string {
 
 describe("KagiSmallwebView invalid-date guard", () => {
   it("sanity-checks the view type identifier", () => {
-    expect(RSS_SMALLWEB_VIEW_TYPE).toBe("rss-smallweb-view");
+    expect(RSS_SMALLWEB_VIEW_TYPE).toBe("rss-dashboard-mod-smallweb-view");
   });
 
   it("falls back to null / now() for a malformed updated timestamp without throwing", () => {

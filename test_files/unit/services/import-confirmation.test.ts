@@ -485,6 +485,21 @@ describe("Import confirmation", () => {
       });
     });
 
+    it("confirms and imports a bundle object, naming its source", async () => {
+      confirmImport.mockResolvedValue("confirm");
+      const importPortableDataBundle = vi.fn();
+
+      const result = await service(
+        importPortableDataBundle,
+      ).importPortableDataBundleFrom(portableBundle(), "the original plugin");
+
+      expect(confirmImport).toHaveBeenCalledWith(
+        expect.objectContaining({ fileName: "the original plugin" }),
+      );
+      expect(importPortableDataBundle).toHaveBeenCalledWith(portableBundle());
+      expect(result).toBe("committed");
+    });
+
     it("rejects an invalid bundle with its validation error before asking", async () => {
       await expect(
         service().importPortableDataBundleFromFile(

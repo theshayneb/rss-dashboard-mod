@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "*"
+  # Manual fallback: releases the version in manifest.json from the chosen
+  # branch, creating its tag. Fails if that tag already exists.
+  workflow_dispatch:
 
 permissions: {}
 
@@ -90,26 +93,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="$(jq -r .version release/manifest.json)"
+          fi
 
+          manifest_version="$(jq -r .version release/manifest.json)"
+          if [[ "$tag" != "$manifest_version" ]]; then
+            echo "::error::Tag $tag does not match manifest.json version $manifest_version"
+            exit 1
+          fi
+
+          # Published (not draft) so BRAT can see it. Alpha and beta tags,
+          # e.g. 2.1.0-beta.1, are marked as prereleases.
           release_notes="Release $tag"
-          release_flags=(--title="$tag" --notes="$release_notes" --draft)
+          release_flags=(--title="$tag" --target="$GITHUB_SHA")
 
-          # Alpha tags are prereleases and should be published (not drafts) so BRAT can see them.
-          if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then
-            release_notes="Alpha release $tag"
-            release_flags=(--title="$tag" --notes="$release_notes" --prerelease)
+          if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta)\.[0-9]+$ ]]; then
+            release_notes="${BASH_REMATCH[1]^} release $tag"
+            release_flags+=(--prerelease)
           fi
 
-          # Beta tags must be formatted without a leading "v", e.g. 2.1.0-beta.1
-          if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
-            release_notes="Beta release $tag"
-            release_flags=(--title="$tag" --notes="$release_notes" --prerelease)
-          fi
-
-          # Create release with all assets
           gh release create "$tag" \
             "${release_flags[@]}" \
+            --notes="$release_notes" \
             release/main.js \
             release/manifest.json \
             release/styles.css

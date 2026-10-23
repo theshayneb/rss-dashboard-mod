@@ -610,7 +610,7 @@ export interface RssDashboardSettings {
   storageFolder: string;
   storageSchemaVersion: number;
   /**
-   * Metadata storage mode: "plugin-default" uses .obsidian/plugins/rss-dashboard/data.json,
+   * Metadata storage mode: "plugin-default" uses .obsidian/plugins/<plugin id>/data.json,
    * "vault-location" uses a user-configured vault folder.
    */
   metadataStorageMode: "plugin-default" | "vault-location";

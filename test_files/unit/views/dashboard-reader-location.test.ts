@@ -66,7 +66,7 @@ vi.mock("../../../src/views/reader-view", () => ({
     focusReaderView = vi.fn();
     isPodcastPlaying = vi.fn(() => false);
   },
-  RSS_READER_VIEW_TYPE: "rss-reader-view",
+  RSS_READER_VIEW_TYPE: "rss-dashboard-mod-reader-view",
 }));
 
 type MockReaderView = {
@@ -216,7 +216,7 @@ describe("Dashboard reader location", () => {
       view.app.workspace.getLeaf as ReturnType<typeof vi.fn>,
     ).toHaveBeenCalledWith("split");
     expect(mainLeaf.setViewState).toHaveBeenCalledWith({
-      type: "rss-reader-view",
+      type: "rss-dashboard-mod-reader-view",
       active: true,
     });
     expect(mainLeaf.view.setReturnLeaf).toHaveBeenCalledWith(dashboardLeaf);
@@ -299,7 +299,7 @@ describe("Dashboard reader location", () => {
       view.app.workspace.getLeaf as ReturnType<typeof vi.fn>,
     ).not.toHaveBeenCalled();
     expect(existingLeaf.setViewState).toHaveBeenCalledWith({
-      type: "rss-reader-view",
+      type: "rss-dashboard-mod-reader-view",
       active: true,
     });
     expect(existingLeaf.view.setReturnLeaf).toHaveBeenCalledWith(dashboardLeaf);
@@ -331,7 +331,7 @@ describe("Dashboard reader location", () => {
     await view.handleArticleClick(feed.items[0]);
 
     expect(mainLeaf.setViewState).toHaveBeenCalledWith({
-      type: "rss-reader-view",
+      type: "rss-dashboard-mod-reader-view",
       active: true,
     });
     expect(revealLeaf).toHaveBeenCalledWith(mainLeaf);
@@ -366,7 +366,7 @@ describe("Dashboard reader location", () => {
       view.app.workspace.getRightLeaf as ReturnType<typeof vi.fn>,
     ).toHaveBeenCalledWith(false);
     expect(rightLeaf.setViewState).toHaveBeenCalledWith({
-      type: "rss-reader-view",
+      type: "rss-dashboard-mod-reader-view",
       active: true,
     });
     expect(windowOpenSpy).not.toHaveBeenCalled();
@@ -393,7 +393,7 @@ describe("Dashboard reader location", () => {
       view.app.workspace.getLeftLeaf as ReturnType<typeof vi.fn>,
     ).toHaveBeenCalledWith(false);
     expect(leftLeaf.setViewState).toHaveBeenCalledWith({
-      type: "rss-reader-view",
+      type: "rss-dashboard-mod-reader-view",
       active: true,
     });
   });

@@ -4,7 +4,7 @@ import type RssDashboardPlugin from "../../main";
 import { setCssProps, attachInputClearButton } from "../utils/platform-utils";
 import { FolderSelectorPopup } from "../components/folder-selector-popup";
 
-export const RSS_SMALLWEB_VIEW_TYPE = "rss-smallweb-view";
+export const RSS_SMALLWEB_VIEW_TYPE = "rss-dashboard-mod-smallweb-view";
 
 /**
  * Represents a single entry from the Kagi Smallweb Atom feed

@@ -46,6 +46,9 @@ function createPlugin(overrides: Partial<HintSettings> = {}) {
       lastRepairResult: "Not yet run",
     })),
     getUnloadedShardFeedCount: vi.fn(() => 0),
+    hasUnsyncableStorage: vi.fn(() => false),
+    moveStorageToSyncedFolder: vi.fn(async () => true),
+    importFromOriginalPlugin: vi.fn(async () => "committed" as const),
     repairVaultStorage: vi.fn(async () => ({ skippedFeedCount: 0 })),
   };
 }
@@ -174,5 +177,35 @@ describe("renderStorageSettingsTab() - metadata location hint", () => {
     const containerEl = document.body.appendChild(createDiv());
     renderStorageSettingsTab(containerEl, createPlugin() as never);
     expect(metadataInput(containerEl).placeholder).toBe(".rss-dashboard-data");
+  });
+});
+
+describe("renderStorageSettingsTab() - sync across devices", () => {
+  function moveButton(containerEl: HTMLElement) {
+    return Array.from(containerEl.querySelectorAll("button")).find(
+      b => b.textContent === "Move to synced folder",
+    );
+  }
+
+  it("offers to move storage that sync skips, and moves it when clicked", async () => {
+    const containerEl = document.body.appendChild(createDiv());
+    const plugin = createPlugin();
+    plugin.hasUnsyncableStorage.mockReturnValue(true);
+    renderStorageSettingsTab(containerEl, plugin as never);
+
+    moveButton(containerEl)!.click();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(plugin.moveStorageToSyncedFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it("confirms storage syncs without offering a move", () => {
+    const containerEl = document.body.appendChild(createDiv());
+    renderStorageSettingsTab(containerEl, createPlugin() as never);
+
+    expect(moveButton(containerEl)).toBeUndefined();
+    expect(
+      findByText(containerEl, ".setting-item", "folders Obsidian Sync carries"),
+    ).toBeDefined();
   });
 });

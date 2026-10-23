@@ -1,3 +1,32 @@
+## 2.7.4 - October 23, 2026 (RSS Dashboard Mod)
+
+### Features
+
+- Read, starred, and tag changes made on one device are no longer undone by another. Before, each save rewrote every loaded article's state from that device's memory, so a device that had not yet reloaded another device's synced `user-state.json` put those articles back the way it last saw them. Now an article this device has not changed keeps the state on disk.
+- Settings that Obsidian Sync brings in from another device (`data.json`) are reloaded while Obsidian is open, instead of only after a restart.
+- New installs keep feed shards and article state in the `rss-dashboard-mod-data` vault folder, which Obsidian Sync carries, instead of inside the plugin folder, which it does not.
+- **Settings → Storage → Sync across devices** shows whether storage is in folders Obsidian Sync carries. When it isn't, **Move to synced folder** moves feeds and article state into `rss-dashboard-mod-data`. **Import from original RSS dashboard** now moves the same way.
+
+## 2.7.3 - October 23, 2026 (RSS Dashboard Mod)
+
+### Fixes
+
+- Fixed RSS Dashboard (Mod) failing to load while the original RSS Dashboard is enabled, which made **Import from original RSS dashboard** unreachable. The two plugins registered the same view types; this fork now uses its own (`rss-dashboard-mod-view`, `rss-dashboard-mod-reader-view`, `rss-dashboard-mod-discover-view`, `rss-dashboard-mod-smallweb-view`).
+
+## 2.7.2 - October 23, 2026 (RSS Dashboard Mod)
+
+First release of this fork, installable through BRAT from `theshayneb/rss-dashboard-mod`.
+
+### Features
+
+- The plugin is now **RSS Dashboard (Mod)** with the id `rss-dashboard-mod`, so it installs next to the original RSS Dashboard instead of replacing it, and the original's updates can't overwrite it.
+- Added **Import from original RSS Dashboard** under **Settings → Storage**, also available from the command palette. With the original plugin still enabled, it copies feeds, folders, tags, articles, article state, and settings into this plugin after the usual import confirmation. Storage the original keeps inside its own plugin folder is moved into this plugin's folder.
+
+### Development and compliance
+
+- Tagged releases are now published rather than left as drafts, so BRAT can install them. The release workflow can also be run by hand to release the version in `manifest.json`.
+- Updated the `vite` and `source-map-js` development dependencies to clear high-severity `npm audit` advisories that failed CI.
+
 ## 2.7.1 - October 3, 2026
 
 For a user-facing overview, see the [RSS Dashboard 2.7.1 release notes](docs/releases/2.7.1.md).

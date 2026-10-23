@@ -1,5 +1,19 @@
 # RSS Dashboard Codex Instructions
 
+## This fork (theshayneb/rss-dashboard-mod)
+
+This repository is a personal fork released through BRAT as
+`rss-dashboard-mod`. It has no `dev` branch: `master` is the base and is
+current (minAppVersion 1.8.7), so the `dev`/`master` guidance below does not
+apply here. Read the plugin id from `src/utils/plugin-id.ts`, never hard-code
+`"rss-dashboard"` (that is the upstream plugin, `ORIGINAL_PLUGIN_ID`).
+
+To release: `npm version <x.y.z> --no-git-tag-version`, add a `CHANGELOG.md`
+entry, commit and push, then push a tag equal to the manifest version with no
+leading `v` (`git tag x.y.z && git push origin x.y.z`). `release.yml` builds
+and publishes a non-draft release, which BRAT needs; `-alpha.N`/`-beta.N` tags
+become prereleases. A tag on a non-default branch still releases that commit.
+
 ## Base branch
 
 Branch and create worktrees off `dev`, never `master`. PRs target `dev`.

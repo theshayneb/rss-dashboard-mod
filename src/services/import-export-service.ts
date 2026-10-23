@@ -213,6 +213,21 @@ export class ImportExportService {
       );
     }
 
+    return this.importPortableDataBundleFrom(parsed, file.name);
+  }
+
+  /**
+   * Import a portable data bundle that is already parsed, such as one read
+   * from another plugin, after the same confirmation a file import shows.
+   * @param {unknown} parsed The bundle object to import
+   * @param {string} sourceName Names the bundle's source in the confirmation
+   * @returns {Promise<ImportResult>} Whether the import was committed or canceled
+   * @throws {Error} If the bundle is invalid or import handler is not available
+   */
+  async importPortableDataBundleFrom(
+    parsed: unknown,
+    sourceName: string,
+  ): Promise<ImportResult> {
     if (!this.importPortableDataBundle) {
       throw new Error(
         "Portable bundle import is not available in this context",
@@ -238,7 +253,7 @@ export class ImportExportService {
     const decision = await this.confirmImport({
       kind: "replacing",
       bundleType: "portable-data-bundle",
-      fileName: file.name,
+      fileName: sourceName,
       feedData: {
         current: this.countCurrentFeedData(),
         incoming: countFeedData(

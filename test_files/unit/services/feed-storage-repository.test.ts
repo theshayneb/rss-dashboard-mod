@@ -2717,3 +2717,132 @@ describe("removing a feed deletes its shard file", () => {
     );
   });
 });
+
+describe("user-state.json changes from another device (Obsidian Sync)", () => {
+  let app: App;
+  let repository: FeedStorageRepository;
+  const userStatePath = ".rss-dashboard-data/user-state.json";
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    app = App.createMock();
+    repository = new FeedStorageRepository(app);
+    await app.vault.adapter.mkdir(".rss-dashboard-data/feeds");
+  });
+
+  /** Two articles in one feed, both hydrated as unread from disk. */
+  async function hydratedSettings(): Promise<RssDashboardSettings> {
+    const settings = cloneSettings();
+    settings.storageMode = "vault-shards-v2";
+    settings.metadataStorageFolder = ".rss-dashboard-data";
+    const items = [
+      makeItem({ guid: "guid-1" }),
+      makeItem({ guid: "guid-2", link: "https://example.com/articles/2" }),
+    ];
+    settings.feeds = [makeFeed({ feedId: "feed-1", items })];
+    await vaultAdapter(app).write(
+      `${settings.storageFolder}/feed-1.json`,
+      JSON.stringify({
+        version: 1,
+        feedId: "feed-1",
+        feedUrl: "https://example.com/feed.xml",
+        updatedAt: Date.now(),
+        items,
+      }),
+    );
+    await vaultAdapter(app).write(
+      userStatePath,
+      JSON.stringify({ version: 3, states: {} }),
+    );
+    await repository.hydrateSettings(settings);
+    return settings;
+  }
+
+  /** Another device's save arriving on disk through sync. */
+  async function syncInFromOtherDevice(
+    states: Record<string, { read?: boolean; starred?: boolean }>,
+  ): Promise<void> {
+    await vaultAdapter(app).write(
+      userStatePath,
+      JSON.stringify({ version: 3, states }),
+    );
+  }
+
+  async function writtenStates(): Promise<
+    Record<string, { read?: boolean; starred?: boolean }>
+  > {
+    const raw = await vaultAdapter(app).read(userStatePath);
+    return (
+      JSON.parse(raw) as {
+        states: Record<string, { read?: boolean; starred?: boolean }>;
+      }
+    ).states;
+  }
+
+  it("keeps an article another device marked read when this device saves", async () => {
+    const settings = await hydratedSettings();
+    await syncInFromOtherDevice({ "feed-1:guid-1": { read: true } });
+
+    // This device changes a different article, then saves.
+    settings.feeds[0].items[1].starred = true;
+    await repository.saveUserStateFromFeeds(settings);
+
+    const states = await writtenStates();
+    expect(states["feed-1:guid-1"]).toMatchObject({ read: true });
+    expect(states["feed-1:guid-2"]).toMatchObject({ starred: true });
+    expect(settings.feeds[0].items[0].read).toBe(true);
+  });
+
+  it("keeps an article another device marked unread", async () => {
+    const settings = await hydratedSettings();
+    settings.feeds[0].items[0].read = true;
+    await repository.saveUserStateFromFeeds(settings);
+
+    await syncInFromOtherDevice({ "feed-1:guid-1": { read: false } });
+    await repository.saveUserStateFromFeeds(settings);
+
+    expect((await writtenStates())["feed-1:guid-1"]?.read ?? false).toBe(false);
+    expect(settings.feeds[0].items[0].read).toBe(false);
+  });
+
+  it("lets this device's own change win over the copy on disk", async () => {
+    const settings = await hydratedSettings();
+    await syncInFromOtherDevice({ "feed-1:guid-1": { starred: true } });
+
+    settings.feeds[0].items[0].read = true;
+    await repository.saveUserStateFromFeeds(settings);
+
+    expect((await writtenStates())["feed-1:guid-1"]).toMatchObject({
+      read: true,
+    });
+  });
+});
+
+describe("user-state.json that has not arrived through sync yet", () => {
+  it("keeps this device's state when the file is missing", async () => {
+    const app = App.createMock();
+    const repository = new FeedStorageRepository(app);
+    await app.vault.adapter.mkdir(".rss-dashboard-data/feeds");
+    const settings = cloneSettings();
+    settings.storageMode = "vault-shards-v2";
+    settings.metadataStorageFolder = ".rss-dashboard-data";
+    settings.feeds = [
+      makeFeed({ feedId: "feed-1", items: [makeItem({ guid: "guid-1" })] }),
+    ];
+    settings.feeds[0].items[0].read = true;
+    await repository.saveUserStateFromFeeds(settings);
+
+    // The file disappears, as when storage moves to a new folder.
+    await app.vault.adapter.remove(".rss-dashboard-data/user-state.json");
+    await repository.saveUserStateFromFeeds(settings);
+
+    const raw = await vaultAdapter(app).read(
+      ".rss-dashboard-data/user-state.json",
+    );
+    const states = (
+      JSON.parse(raw) as { states: Record<string, { read?: boolean }> }
+    ).states;
+    expect(states["feed-1:guid-1"]).toMatchObject({ read: true });
+    expect(settings.feeds[0].items[0].read).toBe(true);
+  });
+});
