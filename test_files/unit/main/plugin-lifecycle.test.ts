@@ -485,7 +485,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -508,7 +508,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -531,7 +531,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -554,7 +554,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -577,7 +577,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -604,7 +604,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -629,7 +629,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -652,7 +652,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -697,7 +697,7 @@ describe("onload() initialization", () => {
     );
 
     const loadSpy = vi.spyOn(plugin, "loadSettings").mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
@@ -780,7 +780,7 @@ describe("onload() initialization", () => {
     const loadSpy = vi
       .spyOn(plugin, "loadSettings")
       .mockResolvedValue(undefined);
-    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViews").mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(plugin, "refreshDashboardViewsKeepingScroll").mockResolvedValue(undefined);
 
     await plugin.onload();
 
