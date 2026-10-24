@@ -12,7 +12,7 @@ import {
   type ArticleSavingPluginLike,
 } from "./article-saving-settings-tab";
 import {
-  renderSyncAcrossDevicesSetting,
+  renderDataFolderSetting,
   type StorageSettingsPluginLike,
 } from "./storage-settings-tab";
 
@@ -40,7 +40,7 @@ export function renderSimpleSettings(
 
   renderRefreshIntervalSetting(containerEl, plugin);
   renderTaskNoteSetting(containerEl, plugin);
-  renderSyncAcrossDevicesSetting(containerEl, plugin);
+  renderDataFolderSetting(containerEl, plugin);
 
   new Setting(containerEl)
     .setName("All settings")

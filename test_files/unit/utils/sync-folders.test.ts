@@ -1,14 +1,15 @@
 /**
- * Which storage folders Obsidian Sync carries, and moving storage that sits
- * somewhere it cannot into the plugin's synced vault folder.
+ * Which storage folders Obsidian Sync carries, and moving storage into the
+ * plugin's data folder.
  */
 import { describe, expect, it } from "vitest";
 import {
   SYNCED_DATA_FOLDER,
   SYNCED_FEEDS_FOLDER,
   hasUnsyncableStorage,
+  isInDataFolder,
   isSyncableFolder,
-  relocateToSyncableFolders,
+  relocateToDataFolder,
 } from "../../../src/utils/sync-folders";
 import type { PortableDataBundle } from "../../../src/types/types";
 
@@ -90,29 +91,33 @@ describe("hasUnsyncableStorage()", () => {
   });
 });
 
-describe("relocateToSyncableFolders()", () => {
-  it("moves storage out of the plugin folder into the synced folder", () => {
-    const result = relocateToSyncableFolders(
-      bundle(
-        `${CONFIG_DIR}/plugins/rss-dashboard/data/feeds`,
-        `${CONFIG_DIR}/plugins/rss-dashboard/data`,
-      ),
-      CONFIG_DIR,
-    );
-
-    expect(result.storageFolder).toBe(SYNCED_FEEDS_FOLDER);
-    expect(result.metadataStorageFolder).toBe(SYNCED_DATA_FOLDER);
-    expect(result.metadata.storageFolder).toBe(SYNCED_FEEDS_FOLDER);
-    expect(result.metadata.metadataStorageFolder).toBe(SYNCED_DATA_FOLDER);
+describe("isInDataFolder()", () => {
+  it("is true only when feeds and article state are both in the data folder", () => {
+    expect(
+      isInDataFolder({
+        storageFolder: SYNCED_FEEDS_FOLDER,
+        metadataStorageFolder: SYNCED_DATA_FOLDER,
+      }),
+    ).toBe(true);
+    expect(
+      isInDataFolder({
+        storageFolder: "RSS/feeds",
+        metadataStorageFolder: SYNCED_DATA_FOLDER,
+      }),
+    ).toBe(false);
   });
+});
 
-  it("keeps folders that already sync", () => {
-    const result = relocateToSyncableFolders(
-      bundle("RSS/feeds", "RSS"),
-      CONFIG_DIR,
+describe("relocateToDataFolder()", () => {
+  it("points feeds and article state at Utilities/RSS Reader", () => {
+    const result = relocateToDataFolder(
+      bundle(`${CONFIG_DIR}/plugins/rss-dashboard/data/feeds`, "RSS"),
     );
 
-    expect(result.storageFolder).toBe("RSS/feeds");
-    expect(result.metadataStorageFolder).toBe("RSS");
+    expect(SYNCED_DATA_FOLDER).toBe("Utilities/RSS Reader");
+    expect(result.storageFolder).toBe("Utilities/RSS Reader/feeds");
+    expect(result.metadataStorageFolder).toBe("Utilities/RSS Reader");
+    expect(result.metadata.storageFolder).toBe("Utilities/RSS Reader/feeds");
+    expect(result.metadata.metadataStorageFolder).toBe("Utilities/RSS Reader");
   });
 });

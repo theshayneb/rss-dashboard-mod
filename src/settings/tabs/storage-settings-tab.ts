@@ -61,7 +61,8 @@ interface StorageSettingsPlugin {
   importPortableDataBundleFromFile(file: File): Promise<ImportResult>;
   importFromOriginalPlugin(): Promise<ImportResult | "unavailable">;
   hasUnsyncableStorage(): boolean;
-  moveStorageToSyncedFolder(): Promise<boolean>;
+  isInDataFolder(): boolean;
+  moveStorageToDataFolder(): Promise<boolean>;
   exportPortableDataBundle(): Promise<void>;
   importFeedBundleFromFile(file: File): Promise<ImportResult>;
   exportFeedBundle(): Promise<void>;
@@ -144,54 +145,64 @@ function renderFolderSetting(
     });
 }
 
-/** What the sync status setting needs from the plugin. */
+/** What the data folder setting needs from the plugin. */
 export type StorageSettingsPluginLike = Pick<
   StorageSettingsPlugin,
-  "settingTab" | "hasUnsyncableStorage" | "moveStorageToSyncedFolder"
+  | "settingTab"
+  | "settings"
+  | "hasUnsyncableStorage"
+  | "isInDataFolder"
+  | "moveStorageToDataFolder"
 >;
 
 /**
- * Whether storage is in folders Obsidian Sync carries, with a button to move
- * it there when it is not.
+ * Where feeds and article state are stored, with a button to move them into
+ * the plugin's data folder when they are elsewhere.
  */
-export function renderSyncAcrossDevicesSetting(
+export function renderDataFolderSetting(
   containerEl: HTMLElement,
   plugin: StorageSettingsPluginLike,
 ): void {
-  const syncSetting = new Setting(containerEl).setName("Sync across devices");
+  const setting = new Setting(containerEl).setName("Data folder");
   const syncSettingsHint =
-    "On every device, in Obsidian's Sync settings, turn on syncing for all other file types and for the active and installed community plugin lists.";
-  if (plugin.hasUnsyncableStorage()) {
-    syncSetting
-      .setDesc(
-        `Feeds or read, starred, and tag state are stored in a hidden folder or the plugin folder, which Obsidian Sync skips. Move them to the ${SYNCED_DATA_FOLDER} folder so your other devices get them. ${syncSettingsHint}`,
-      )
-      .addButton((button) =>
-        button
-          .setButtonText("Move to synced folder")
-          .setCta()
-          .onClick(() => {
-            void (async () => {
-              try {
-                if (await plugin.moveStorageToSyncedFolder()) {
-                  plugin.settingTab?.display();
-                }
-              } catch (error) {
-                storageError("Move to synced folder failed", error);
-                new Notice(
-                  `Move to synced folder failed${
-                    error instanceof Error ? `: ${error.message}` : ""
-                  }`,
-                );
-              }
-            })();
-          }),
-      );
-  } else {
-    syncSetting.setDesc(
-      `Feeds, settings, and read, starred, and tag state are in folders Obsidian Sync carries. ${syncSettingsHint}`,
+    "To sync across devices, turn on syncing for all other file types and for the active and installed community plugin lists in Obsidian's Sync settings on every device.";
+
+  if (plugin.isInDataFolder()) {
+    setting.setDesc(
+      `Feeds and read, starred, and tag state are stored in ${SYNCED_DATA_FOLDER}. ${syncSettingsHint}`,
     );
+    return;
   }
+
+  const current = plugin.settings.metadataStorageFolder || "a hidden folder";
+  const skipped = plugin.hasUnsyncableStorage()
+    ? ", which Obsidian Sync skips"
+    : "";
+  setting
+    .setDesc(
+      `Feeds and read, starred, and tag state are stored in ${current}${skipped}. Move them to ${SYNCED_DATA_FOLDER}; the old copy is left in place. ${syncSettingsHint}`,
+    )
+    .addButton((button) =>
+      button
+        .setButtonText(`Move to ${SYNCED_DATA_FOLDER}`)
+        .setCta()
+        .onClick(() => {
+          void (async () => {
+            try {
+              if (await plugin.moveStorageToDataFolder()) {
+                plugin.settingTab?.display();
+              }
+            } catch (error) {
+              storageError("Move to data folder failed", error);
+              new Notice(
+                `Move to ${SYNCED_DATA_FOLDER} failed${
+                  error instanceof Error ? `: ${error.message}` : ""
+                }`,
+              );
+            }
+          })();
+        }),
+    );
 }
 
 export function renderStorageSettingsTab(
@@ -478,7 +489,7 @@ export function renderStorageSettingsTab(
     leftoverStateSetting.settingEl.hidden = false;
   });
 
-  renderSyncAcrossDevicesSetting(containerEl, plugin);
+  renderDataFolderSetting(containerEl, plugin);
 
   if (PLUGIN_ID !== ORIGINAL_PLUGIN_ID) {
     new Setting(containerEl)

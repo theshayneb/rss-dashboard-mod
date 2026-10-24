@@ -47,7 +47,8 @@ function createPlugin(overrides: Partial<HintSettings> = {}) {
     })),
     getUnloadedShardFeedCount: vi.fn(() => 0),
     hasUnsyncableStorage: vi.fn(() => false),
-    moveStorageToSyncedFolder: vi.fn(async () => true),
+    isInDataFolder: vi.fn(() => true),
+    moveStorageToDataFolder: vi.fn(async () => true),
     importFromOriginalPlugin: vi.fn(async () => "committed" as const),
     repairVaultStorage: vi.fn(async () => ({ skippedFeedCount: 0 })),
   };
@@ -180,32 +181,36 @@ describe("renderStorageSettingsTab() - metadata location hint", () => {
   });
 });
 
-describe("renderStorageSettingsTab() - sync across devices", () => {
+describe("renderStorageSettingsTab() - data folder", () => {
   function moveButton(containerEl: HTMLElement) {
     return Array.from(containerEl.querySelectorAll("button")).find(
-      b => b.textContent === "Move to synced folder",
+      b => b.textContent === "Move to Utilities/RSS Reader",
     );
   }
 
-  it("offers to move storage that sync skips, and moves it when clicked", async () => {
+  it("offers to move storage kept elsewhere, and moves it when clicked", async () => {
     const containerEl = document.body.appendChild(createDiv());
     const plugin = createPlugin();
+    plugin.isInDataFolder.mockReturnValue(false);
     plugin.hasUnsyncableStorage.mockReturnValue(true);
     renderStorageSettingsTab(containerEl, plugin as never);
 
+    expect(
+      findByText(containerEl, ".setting-item", "which Obsidian Sync skips"),
+    ).toBeDefined();
     moveButton(containerEl)!.click();
     for (let i = 0; i < 5; i++) await Promise.resolve();
 
-    expect(plugin.moveStorageToSyncedFolder).toHaveBeenCalledTimes(1);
+    expect(plugin.moveStorageToDataFolder).toHaveBeenCalledTimes(1);
   });
 
-  it("confirms storage syncs without offering a move", () => {
+  it("confirms storage is in the data folder without offering a move", () => {
     const containerEl = document.body.appendChild(createDiv());
     renderStorageSettingsTab(containerEl, createPlugin() as never);
 
     expect(moveButton(containerEl)).toBeUndefined();
     expect(
-      findByText(containerEl, ".setting-item", "folders Obsidian Sync carries"),
+      findByText(containerEl, ".setting-item", "stored in Utilities/RSS Reader"),
     ).toBeDefined();
   });
 });

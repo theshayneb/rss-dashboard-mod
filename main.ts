@@ -74,7 +74,8 @@ import {
   SYNCED_DATA_FOLDER,
   SYNCED_FEEDS_FOLDER,
   hasUnsyncableStorage,
-  relocateToSyncableFolders,
+  isInDataFolder,
+  relocateToDataFolder,
 } from "./src/utils/sync-folders";
 import {
   ImportExportService,
@@ -2324,9 +2325,8 @@ export default class RssDashboardPlugin extends Plugin {
       return "unavailable";
     }
 
-    const bundle = relocateToSyncableFolders(
+    const bundle = relocateToDataFolder(
       parsePortableDataBundle(snapshot.bundle),
-      this.app.vault.configDir,
     );
     const result = await this.importExportService.importPortableDataBundleFrom(
       bundle,
@@ -2347,14 +2347,19 @@ export default class RssDashboardPlugin extends Plugin {
     return hasUnsyncableStorage(this.settings, this.app.vault.configDir);
   }
 
+  /** Whether feeds and article state are in the plugin's data folder. */
+  public isInDataFolder(): boolean {
+    return isInDataFolder(this.settings);
+  }
+
   /**
-   * Rewrites feed shards and article state into a vault folder Obsidian Sync
-   * carries, when they sit in a hidden folder or the plugin folder. Folders
-   * that already sync are kept. Returns whether anything moved.
+   * Rewrites feed shards and article state into the plugin's data folder.
+   * The previous copies are left where they were. Returns whether anything
+   * moved.
    */
-  public async moveStorageToSyncedFolder(): Promise<boolean> {
-    if (!this.hasUnsyncableStorage()) {
-      new Notice("Storage is already in folders that sync across devices.");
+  public async moveStorageToDataFolder(): Promise<boolean> {
+    if (this.isInDataFolder()) {
+      new Notice(`Storage is already in ${SYNCED_DATA_FOLDER}.`);
       return false;
     }
     if (this.getUnloadedShardFeedCount() > 0) {
@@ -2364,14 +2369,10 @@ export default class RssDashboardPlugin extends Plugin {
       return false;
     }
 
-    const bundle = relocateToSyncableFolders(
-      this.getPortableDataBundle(),
-      this.app.vault.configDir,
+    await this.applyPortableDataBundleImport(
+      relocateToDataFolder(this.getPortableDataBundle()),
     );
-    await this.applyPortableDataBundleImport(bundle);
-    new Notice(
-      `Feeds and article state now sync from the ${SYNCED_DATA_FOLDER} folder.`,
-    );
+    new Notice(`Feeds and article state are now in ${SYNCED_DATA_FOLDER}.`);
     return true;
   }
 

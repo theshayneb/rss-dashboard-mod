@@ -81,8 +81,8 @@ describe("Storage location for a fresh install", () => {
     await addFeedAndSave(plugin);
 
     const adapter = app.vault.adapter;
-    expect(await adapter.exists("rss-dashboard-mod-data/feeds/feed-1.json")).toBe(true);
-    expect(await adapter.exists("rss-dashboard-mod-data/user-state.json")).toBe(true);
+    expect(await adapter.exists("Utilities/RSS Reader/feeds/feed-1.json")).toBe(true);
+    expect(await adapter.exists("Utilities/RSS Reader/user-state.json")).toBe(true);
     expect(await adapter.exists(`${PLUGIN_DIR}/data/user-state.json`)).toBe(false);
     expect(await adapter.exists(".rss-dashboard-data/user-state.json")).toBe(false);
     expect(await adapter.exists(".rss-dashboard-data/feeds/feed-1.json")).toBe(false);
@@ -95,8 +95,8 @@ describe("Storage location for a fresh install", () => {
 
     const { plugin } = await launch(app, first.persisted());
 
-    expect(plugin.settings.storageFolder).toBe("rss-dashboard-mod-data/feeds");
-    expect(plugin.settings.metadataStorageFolder).toBe("rss-dashboard-mod-data");
+    expect(plugin.settings.storageFolder).toBe("Utilities/RSS Reader/feeds");
+    expect(plugin.settings.metadataStorageFolder).toBe("Utilities/RSS Reader");
     const [item] = plugin.settings.feeds[0]?.items ?? [];
     expect(item?.read).toBe(true);
     expect(item?.starred).toBe(true);

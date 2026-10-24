@@ -1,3 +1,9 @@
+## 2.7.8 - October 24, 2026 (RSS Reader)
+
+### Changes
+
+- Feeds and article state now live in `Utilities/RSS Reader` (feeds in `Utilities/RSS Reader/feeds`), which Obsidian Sync carries. New installs and **Import from original RSS dashboard** use it, and when your data is anywhere else the settings page's **Data folder** offers **Move to Utilities/RSS Reader**. The old copy is left where it was. **Data folder** replaces **Sync across devices**.
+
 ## 2.7.7 - October 24, 2026 (RSS Reader)
 
 ### Changes

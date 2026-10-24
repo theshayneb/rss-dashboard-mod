@@ -18,7 +18,8 @@ function createPlugin() {
     saveSettings: vi.fn(async () => {}),
     settingTab: null,
     hasUnsyncableStorage: vi.fn(() => false),
-    moveStorageToSyncedFolder: vi.fn(async () => true),
+    isInDataFolder: vi.fn(() => true),
+    moveStorageToDataFolder: vi.fn(async () => true),
   };
 }
 
@@ -51,7 +52,7 @@ describe("renderSimpleSettings()", () => {
       "Feeds",
       "Auto-refresh interval",
       "Save button adds a task to",
-      "Sync across devices",
+      "Data folder",
       "All settings",
     ]);
   });

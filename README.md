@@ -65,7 +65,7 @@ Version 2.2.0 demo (core experience remains similar).
 
 This repository is a personal fork, published as **RSS Reader** with the plugin id `rss-dashboard-mod`, so it installs next to the original plugin rather than replacing it.
 
-Its settings open on one short page: manage feeds, the auto-refresh interval, the to-do note the save button adds article links to, and Obsidian Sync status. **Show all settings** at the bottom opens everything else.
+Its settings open on one short page: manage feeds, the auto-refresh interval, the to-do note the save button adds article links to, and the data folder (`Utilities/RSS Reader`). **Show all settings** at the bottom opens everything else.
 
 ### Install with BRAT
 
@@ -88,7 +88,7 @@ BRAT picks up each new release from this repository's Releases page.
 Feeds, settings, and read, starred, and tag state sync across devices once both of these are true:
 
 1. On **every** device, open **Settings → Sync** and turn on **Sync all other types**, **Active community plugin list**, and **Installed community plugin list**.
-2. In **Settings → RSS Reader → Storage**, **Sync across devices** says storage is in folders Obsidian Sync carries. If it doesn't, click **Move to synced folder** on the device that has your data, and wait for Sync to finish before opening the plugin on other devices.
+2. In **Settings → RSS Reader**, **Data folder** says feeds and article state are stored in `Utilities/RSS Reader`. If it doesn't, click **Move to Utilities/RSS Reader** on the device that has your data, and wait for Sync to finish before opening the plugin on other devices.
 
 On a new device, let Sync report **Fully synced** before enabling the plugin, as described in [Syncing across devices](docs/syncing.md).
 
