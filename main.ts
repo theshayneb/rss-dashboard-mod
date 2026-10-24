@@ -3185,7 +3185,21 @@ export default class RssDashboardPlugin extends Plugin {
 
     return (
       normalizedBase === `${normalizedFolder}/data.json` ||
-      normalizedBase === `${normalizedFolder}/user-state.json`
+      normalizedBase === `${normalizedFolder}/user-state.json` ||
+      this.isUserStatePath(filePath)
+    );
+  }
+
+  /**
+   * Whether a path is the user-state.json this plugin reads, wherever the
+   * metadata folder points (such as Utilities/RSS Reader), so read, starred,
+   * and tag changes from another device are picked up while Obsidian is open.
+   */
+  private isUserStatePath(filePath: string): boolean {
+    if (!this.settings) return false;
+    return (
+      filePath.replace(/^\/+|\/+$/g, "") ===
+      this.feedStorageRepository.getUserStatePath(this.settings)
     );
   }
 
@@ -3248,7 +3262,23 @@ export default class RssDashboardPlugin extends Plugin {
 
       if (!watched) return;
 
-      this.scheduleExternalSettingsReload();
+      const userStateOnly = candidatePaths.every((candidatePath) =>
+        this.isUserStatePath(candidatePath),
+      );
+      if (!userStateOnly) {
+        this.scheduleExternalSettingsReload();
+        return;
+      }
+
+      void (async () => {
+        if (
+          await this.feedStorageRepository.hasUserStateChangedOnDisk(
+            this.settings,
+          )
+        ) {
+          this.scheduleExternalSettingsReload();
+        }
+      })();
     };
 
     this.registerEvent(vault.on("modify", (file) => scheduleReload(file)));

@@ -175,3 +175,70 @@ describe("moving storage to the Utilities/RSS Reader data folder", () => {
     expect(await plugin.moveStorageToDataFolder()).toBe(false);
   });
 });
+
+describe("article state changed by another device", () => {
+  const userStatePath = "Utilities/RSS Reader/user-state.json";
+
+  async function startWatching(app: App) {
+    const handlers: Record<string, (...args: unknown[]) => void> = {};
+    app.vault.on = vi.fn(
+      (event: string, callback: (...args: unknown[]) => void) => {
+        handlers[event] = callback;
+        return {};
+      },
+    ) as never;
+    const plugin = new RssDashboardPlugin(app, manifest());
+    plugin.loadData = vi.fn().mockResolvedValue({
+      ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+      storageMode: "vault-shards-v2",
+      storageFolder: "Utilities/RSS Reader/feeds",
+      metadataStorageFolder: "Utilities/RSS Reader",
+    });
+    plugin.saveData = vi.fn().mockResolvedValue(undefined);
+    await plugin.onload();
+    plugin.settings.feeds.push(sampleFeed());
+    await plugin.saveSettings();
+    const reload = vi.spyOn(plugin, "loadSettings").mockResolvedValue();
+    // Let the watcher's suppression of the plugin's own save expire.
+    (plugin as unknown as { suppressWatcherUntil: number }).suppressWatcherUntil = 0;
+    return { plugin, reload, modify: () => handlers.modify?.({ path: userStatePath }) };
+  }
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(2000);
+  }
+
+  it("reloads when user-state.json in the data folder brings a real change", async () => {
+    vi.useFakeTimers();
+    const app = App.createMock();
+    const { reload, modify } = await startWatching(app);
+    const file = JSON.parse(await app.vault.adapter.read(userStatePath)) as {
+      states: Record<string, unknown>;
+    };
+    file.states = { "feed-1:https://example.com/1": { read: false } };
+    await app.vault.adapter.write(userStatePath, JSON.stringify(file));
+
+    modify();
+    await settle();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reload for a copy that differs only by its sync stamp", async () => {
+    vi.useFakeTimers();
+    const app = App.createMock();
+    const { reload, modify } = await startWatching(app);
+    const file = JSON.parse(await app.vault.adapter.read(userStatePath)) as Record<
+      string,
+      unknown
+    >;
+    file._syncNonce = "999-1";
+    await app.vault.adapter.write(userStatePath, JSON.stringify(file));
+
+    modify();
+    await settle();
+
+    expect(reload).not.toHaveBeenCalled();
+  });
+});
