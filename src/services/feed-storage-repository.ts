@@ -14,6 +14,7 @@ import type {
   FeedShardHealth,
 } from "../types/types";
 import { trimSurroundingSlashes } from "../utils/folder-paths";
+import { settingsFingerprint } from "../utils/settings-fingerprint";
 
 const SHARD_VERSION = 1;
 
@@ -420,6 +421,8 @@ export class FeedStorageRepository {
    */
   private knownUserStateByKey = new Map<string, string>();
   private warnedUserStateUnreadable = false;
+  /** user-state.json as this device last read or wrote it, minus its sync stamp. */
+  private lastUserStateFingerprint: string | null = null;
   private userStateUnreadable = false;
   private onUserStateHealthChange?: () => void;
   private app: App;
@@ -1652,7 +1655,7 @@ export class FeedStorageRepository {
     return folderPath.slice(0, lastSlashIndex);
   }
 
-  private getUserStatePath(settings: RssDashboardSettings): string {
+  public getUserStatePath(settings: RssDashboardSettings): string {
     let folder = settings.metadataStorageFolder.trim();
     if (!folder) {
       folder = ".rss-dashboard-data";
@@ -1694,12 +1697,35 @@ export class FeedStorageRepository {
       const raw = await this.app.vault.adapter.read(path);
       const parsed = JSON.parse(raw) as UserStateFile;
       if (parsed && typeof parsed.states === "object") {
+        this.lastUserStateFingerprint = settingsFingerprint(parsed);
         return { status: "ok", file: parsed };
       }
     } catch (e) {
       storageError("Failed to parse user-state.json", e);
     }
     return { status: "unreadable" };
+  }
+
+  /**
+   * Whether user-state.json on disk holds something other than what this
+   * device last read or wrote. Every save stamps the file with a fresh sync
+   * nonce, so a copy that differs only by that stamp is unchanged; reloading
+   * for it would bounce saves between devices. A missing or unreadable file
+   * counts as changed.
+   */
+  public async hasUserStateChangedOnDisk(
+    settings: RssDashboardSettings,
+  ): Promise<boolean> {
+    const path = this.getUserStatePath(settings);
+    try {
+      if (!(await this.app.vault.adapter.exists(path))) return true;
+      const onDisk = settingsFingerprint(
+        JSON.parse(await this.app.vault.adapter.read(path)),
+      );
+      return onDisk !== this.lastUserStateFingerprint;
+    } catch {
+      return true;
+    }
   }
 
   public async loadUserState(settings: RssDashboardSettings): Promise<UserStateFile | null> {
@@ -2014,6 +2040,7 @@ export class FeedStorageRepository {
       }
     }
 
+    this.lastUserStateFingerprint = settingsFingerprint(userStateFile);
     const writeUserState = () =>
       this.app.vault.adapter.write(path, JSON.stringify(userStateFile, null, 2));
     if (this.writeWrapper) {

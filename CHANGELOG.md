@@ -1,3 +1,9 @@
+## 2.7.10 - October 24, 2026 (RSS Reader)
+
+### Fixes
+
+- Read, starred, and tag changes made on another device now show up while Obsidian is open, as soon as Obsidian Sync delivers them. The file watcher only looked for `user-state.json` in the old `.rss-dashboard-data` folder, not in the data folder the plugin actually uses (`Utilities/RSS Reader`). As with `data.json` in 2.7.9, a synced copy that differs only by its sync stamp is ignored, so the two devices don't bounce saves back and forth.
+
 ## 2.7.9 - October 24, 2026 (RSS Reader)
 
 ### Fixes

@@ -2846,3 +2846,57 @@ describe("user-state.json that has not arrived through sync yet", () => {
     expect(settings.feeds[0].items[0].read).toBe(true);
   });
 });
+
+describe("hasUserStateChangedOnDisk()", () => {
+  const path = "Utilities/RSS Reader/user-state.json";
+  let app: App;
+  let repository: FeedStorageRepository;
+  let settings: RssDashboardSettings;
+
+  beforeEach(async () => {
+    app = App.createMock();
+    repository = new FeedStorageRepository(app);
+    await app.vault.adapter.mkdir("Utilities/RSS Reader/feeds");
+    settings = cloneSettings();
+    settings.storageMode = "vault-shards-v2";
+    settings.storageFolder = "Utilities/RSS Reader/feeds";
+    settings.metadataStorageFolder = "Utilities/RSS Reader";
+    settings.feeds = [
+      makeFeed({ feedId: "feed-1", items: [makeItem({ guid: "guid-1" })] }),
+    ];
+    settings.feeds[0].items[0].read = true;
+    await repository.saveUserStateFromFeeds(settings);
+  });
+
+  async function rewrite(
+    edit: (file: Record<string, unknown>) => void,
+  ): Promise<void> {
+    const file = JSON.parse(await vaultAdapter(app).read(path)) as Record<
+      string,
+      unknown
+    >;
+    edit(file);
+    await vaultAdapter(app).write(path, JSON.stringify(file));
+  }
+
+  it("is false right after this device's own save", async () => {
+    expect(await repository.hasUserStateChangedOnDisk(settings)).toBe(false);
+  });
+
+  it("is false when another device's copy differs only by its sync stamp", async () => {
+    await rewrite((file) => {
+      file._syncNonce = "999-1";
+      file._syncPad = "different padding";
+    });
+
+    expect(await repository.hasUserStateChangedOnDisk(settings)).toBe(false);
+  });
+
+  it("is true when another device changed an article's state", async () => {
+    await rewrite((file) => {
+      file.states = { "feed-1:guid-1": { read: false, starred: true } };
+    });
+
+    expect(await repository.hasUserStateChangedOnDisk(settings)).toBe(true);
+  });
+});
