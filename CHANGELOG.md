@@ -1,3 +1,9 @@
+## 2.7.9 - October 24, 2026 (RSS Reader)
+
+### Fixes
+
+- Fixed the dashboard redrawing about once a minute and jumping back to the top of the feed and article lists while Obsidian Sync was running. Every save stamps `data.json` with a fresh sync nonce, and since 2.7.4 each device reloaded settings whenever a synced copy arrived, even one that differed only by that stamp. The reload could save again, so two open devices kept bouncing saves back and forth. A synced copy that changes nothing is now ignored, and a real change re-renders the dashboard without losing the scroll position.
+
 ## 2.7.8 - October 24, 2026 (RSS Reader)
 
 ### Changes

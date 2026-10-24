@@ -70,6 +70,7 @@ import {
   ORIGINAL_PLUGIN_SOURCE_NAME,
   readOriginalPluginSnapshot,
 } from "./src/utils/original-plugin-import";
+import { settingsFingerprint } from "./src/utils/settings-fingerprint";
 import {
   SYNCED_DATA_FOLDER,
   SYNCED_FEEDS_FOLDER,
@@ -332,6 +333,8 @@ export default class RssDashboardPlugin extends Plugin {
   private refreshStatusRenderTimeoutId: number | null = null;
   private autoRefreshScheduler: FeedRefreshScheduler | null = null;
   private suppressWatcherUntil = 0;
+  /** data.json as this device last read or wrote it, minus sync bookkeeping. */
+  private lastPersistedSettingsFingerprint: string | null = null;
   private static readonly FEED_REFRESH_RENDER_THROTTLE_MS = 250;
   private readonly feedStorageRepository: FeedStorageRepository;
   private imageCacheService: ImageCacheService | null = null;
@@ -880,6 +883,20 @@ export default class RssDashboardPlugin extends Plugin {
       const view = leaf.view;
       if (view instanceof RssDashboardView) {
         view.refresh();
+      }
+    }
+  }
+
+  /** Re-renders for settings changed elsewhere, keeping each scroll position. */
+  public async refreshDashboardViewsKeepingScroll(): Promise<void> {
+    const leaves = this.app.workspace.getLeavesOfType(RSS_DASHBOARD_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (requireApiVersion("1.7.2")) {
+        await leaf.loadIfDeferred();
+      }
+      const view = leaf.view;
+      if (view instanceof RssDashboardView) {
+        view.refreshKeepingScroll();
       }
     }
   }
@@ -3035,6 +3052,7 @@ export default class RssDashboardPlugin extends Plugin {
 
       // Step 1: load bootstrap pointer from plugin-default location
       let data = (await this.loadData()) as RssDashboardSettings | null;
+      this.lastPersistedSettingsFingerprint = settingsFingerprint(data);
 
       let vaultMetadataUnreadable = false;
 
@@ -3177,7 +3195,18 @@ export default class RssDashboardPlugin extends Plugin {
    */
   async onExternalSettingsChange(): Promise<void> {
     if (Date.now() < this.suppressWatcherUntil) return;
+    // Every save stamps data.json with a fresh sync nonce, so a copy that
+    // differs from this device's only by that stamp changes nothing.
+    // Reloading for it would redraw the dashboard, and the reload's own save
+    // would bounce back to the other device, over and over.
+    const incoming = settingsFingerprint(await this.loadData());
+    if (incoming === this.lastPersistedSettingsFingerprint) return;
     this.scheduleExternalSettingsReload();
+  }
+
+  async saveData(data: unknown): Promise<void> {
+    this.lastPersistedSettingsFingerprint = settingsFingerprint(data);
+    await super.saveData(data);
   }
 
   /** Reloads settings once a burst of external changes has settled. */
@@ -3190,7 +3219,7 @@ export default class RssDashboardPlugin extends Plugin {
       this.vaultMetadataReloadTimer = null;
       void (async () => {
         await this.loadSettings();
-        await this.refreshDashboardViews();
+        await this.refreshDashboardViewsKeepingScroll();
       })();
     }, 1500);
   }

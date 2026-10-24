@@ -3676,6 +3676,33 @@ export class RssDashboardView extends ItemView {
     this.render();
   }
 
+  /**
+   * Re-renders for settings changed elsewhere, such as another device through
+   * sync, keeping the article list and the feed list where the user had
+   * scrolled them.
+   */
+  refreshKeepingScroll(): void {
+    const scrollAreas = [
+      ".rss-dashboard-articles",
+      ".rss-dashboard-feed-folders-section",
+    ];
+    const positions = scrollAreas.map(
+      (selector) =>
+        this.containerEl.querySelector<HTMLElement>(selector)?.scrollTop ?? 0,
+    );
+    const restore = () => {
+      scrollAreas.forEach((selector, index) => {
+        const area = this.containerEl.querySelector<HTMLElement>(selector);
+        if (area) area.scrollTop = positions[index] ?? 0;
+      });
+    };
+
+    this.refresh();
+    restore();
+    // Card layout settles after the first frame; restore again once it has.
+    window.requestAnimationFrame(restore);
+  }
+
   async onClose(): Promise<void> {
     this.closeMobileSidebarModal();
     this.unbindViewportResizeListener();

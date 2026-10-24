@@ -66,10 +66,17 @@ afterEach(() => {
 });
 
 describe("settings changed by another device", () => {
-  it("reloads settings when Obsidian reports an external data.json change", async () => {
+  function settingsWith(overrides: Record<string, unknown>) {
+    return { ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), ...overrides };
+  }
+
+  it("reloads settings when another device changed data.json", async () => {
     vi.useFakeTimers();
-    const plugin = await launch(App.createMock(), null);
+    const plugin = await launch(App.createMock(), settingsWith({}));
     const reload = vi.spyOn(plugin, "loadSettings").mockResolvedValue();
+    plugin.loadData = vi
+      .fn()
+      .mockResolvedValue(settingsWith({ refreshInterval: 240 }));
 
     await plugin.onExternalSettingsChange();
     await vi.advanceTimersByTimeAsync(2000);
@@ -77,10 +84,32 @@ describe("settings changed by another device", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores a copy that differs only by its sync stamp, so the dashboard is not redrawn", async () => {
+    vi.useFakeTimers();
+    const plugin = await launch(
+      App.createMock(),
+      settingsWith({ _syncNonce: "1-1", _syncPad: "pad" }),
+    );
+    const reload = vi.spyOn(plugin, "loadSettings").mockResolvedValue();
+    plugin.loadData = vi
+      .fn()
+      .mockResolvedValue(
+        settingsWith({ _syncNonce: "2-7", _syncPad: "longer pad" }),
+      );
+
+    await plugin.onExternalSettingsChange();
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   it("ignores the change its own save just wrote", async () => {
     vi.useFakeTimers();
-    const plugin = await launch(App.createMock(), null);
+    const plugin = await launch(App.createMock(), settingsWith({}));
     const reload = vi.spyOn(plugin, "loadSettings").mockResolvedValue();
+    plugin.loadData = vi
+      .fn()
+      .mockResolvedValue(settingsWith({ refreshInterval: 240 }));
 
     await plugin.writeWithWatcherSuppressed(async () => {});
     await plugin.onExternalSettingsChange();
