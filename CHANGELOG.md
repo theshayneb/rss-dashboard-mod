@@ -1,3 +1,9 @@
+## 2.7.7 - October 24, 2026 (RSS Reader)
+
+### Changes
+
+- Settings now open on one short page with only what everyday use needs: **Manage feeds**, **Auto-refresh interval**, **Save button adds a task to**, and **Sync across devices**. **Show all settings** opens the full tabbed settings, and **Back to simple settings** returns. Every other setting keeps its current value, and links from elsewhere in the plugin to a specific settings tab still open that tab.
+
 ## 2.7.6 - October 23, 2026 (RSS Reader)
 
 ### Changes

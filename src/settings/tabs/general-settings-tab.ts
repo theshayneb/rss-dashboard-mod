@@ -56,6 +56,82 @@ export function isPresetAutoDeleteDuration(value: number): boolean {
   return AUTO_DELETE_PRESETS.includes(value);
 }
 
+/** The auto-refresh interval dropdown, with a custom minutes field. */
+export function renderRefreshIntervalSetting(
+  containerEl: HTMLElement,
+  plugin: Pick<GeneralSettingsPlugin, "settings" | "saveSettings">,
+): void {
+  const refreshIntervalSetting = new Setting(containerEl)
+    .setName("Auto-refresh interval")
+    .setDesc("How often to auto-refresh feeds (in minutes)");
+
+  let refreshInterval = plugin.settings.refreshInterval;
+  let refreshIntervalCustomInput: HTMLInputElement | null = null;
+
+  refreshIntervalSetting.addDropdown((dropdown) => {
+    dropdown
+      .addOption("0", "Off")
+      .addOption("5", "5 minutes")
+      .addOption("10", "10 minutes")
+      .addOption("15", "15 minutes")
+      .addOption("30", "30 minutes")
+      .addOption("60", "1 hour")
+      .addOption("120", "2 hours")
+      .addOption("240", "4 hours")
+      .addOption("480", "8 hours")
+      .addOption("720", "12 hours")
+      .addOption("1440", "24 hours")
+      .addOption("custom", "Custom...")
+      .setValue(
+        isPresetRefreshInterval(refreshInterval)
+          ? refreshInterval.toString()
+          : "custom",
+      )
+      .onChange((value) => {
+        if (value === "custom") {
+          if (!refreshIntervalCustomInput) {
+            refreshIntervalCustomInput =
+              refreshIntervalSetting.controlEl.createEl("input", {
+                type: "number",
+                placeholder: "Enter minutes",
+                cls: "rss-custom-input",
+              });
+            refreshIntervalCustomInput.min = "0";
+            refreshIntervalCustomInput.value =
+              refreshInterval > 0 ? refreshInterval.toString() : "";
+            refreshIntervalCustomInput.addEventListener("change", () => {
+              void (async () => {
+                const parsed = parseInt(
+                  refreshIntervalCustomInput?.value || "",
+                  10,
+                );
+                refreshInterval = normalizeRefreshIntervalMinutes(
+                  Number.isFinite(parsed) ? parsed : 0,
+                );
+                if (refreshIntervalCustomInput) {
+                  refreshIntervalCustomInput.value = refreshInterval.toString();
+                }
+                plugin.settings.refreshInterval = refreshInterval;
+                await plugin.saveSettings();
+              })();
+            });
+          }
+          refreshIntervalCustomInput.removeClass("hidden");
+          refreshIntervalCustomInput.addClass("visible");
+          return;
+        }
+
+        refreshIntervalCustomInput?.removeClass("visible");
+        refreshIntervalCustomInput?.addClass("hidden");
+        refreshInterval = normalizeRefreshIntervalMinutes(parseInt(value, 10));
+        void (async () => {
+          plugin.settings.refreshInterval = refreshInterval;
+          await plugin.saveSettings();
+        })();
+      });
+  });
+}
+
 // ── Tab renderer ─────────────────────────────────────────────────────────────
 
 export function renderGeneralSettingsTab(
@@ -206,76 +282,7 @@ export function renderGeneralSettingsTab(
 
   new Setting(containerEl).setName("Global feeds").setHeading();
 
-  // ── Refresh interval ──────────────────────────────────────────────────────
-  const refreshIntervalSetting = new Setting(containerEl)
-    .setName("Auto-refresh interval")
-    .setDesc("How often to auto-refresh feeds (in minutes)");
-
-  let refreshInterval = plugin.settings.refreshInterval;
-  let refreshIntervalCustomInput: HTMLInputElement | null = null;
-
-  refreshIntervalSetting.addDropdown((dropdown) => {
-    dropdown
-      .addOption("0", "Off")
-      .addOption("5", "5 minutes")
-      .addOption("10", "10 minutes")
-      .addOption("15", "15 minutes")
-      .addOption("30", "30 minutes")
-      .addOption("60", "1 hour")
-      .addOption("120", "2 hours")
-      .addOption("240", "4 hours")
-      .addOption("480", "8 hours")
-      .addOption("720", "12 hours")
-      .addOption("1440", "24 hours")
-      .addOption("custom", "Custom...")
-      .setValue(
-        isPresetRefreshInterval(refreshInterval)
-          ? refreshInterval.toString()
-          : "custom",
-      )
-      .onChange((value) => {
-        if (value === "custom") {
-          if (!refreshIntervalCustomInput) {
-            refreshIntervalCustomInput =
-              refreshIntervalSetting.controlEl.createEl("input", {
-                type: "number",
-                placeholder: "Enter minutes",
-                cls: "rss-custom-input",
-              });
-            refreshIntervalCustomInput.min = "0";
-            refreshIntervalCustomInput.value =
-              refreshInterval > 0 ? refreshInterval.toString() : "";
-            refreshIntervalCustomInput.addEventListener("change", () => {
-              void (async () => {
-                const parsed = parseInt(
-                  refreshIntervalCustomInput?.value || "",
-                  10,
-                );
-                refreshInterval = normalizeRefreshIntervalMinutes(
-                  Number.isFinite(parsed) ? parsed : 0,
-                );
-                if (refreshIntervalCustomInput) {
-                  refreshIntervalCustomInput.value = refreshInterval.toString();
-                }
-                plugin.settings.refreshInterval = refreshInterval;
-                await plugin.saveSettings();
-              })();
-            });
-          }
-          refreshIntervalCustomInput.removeClass("hidden");
-          refreshIntervalCustomInput.addClass("visible");
-          return;
-        }
-
-        refreshIntervalCustomInput?.removeClass("visible");
-        refreshIntervalCustomInput?.addClass("hidden");
-        refreshInterval = normalizeRefreshIntervalMinutes(parseInt(value, 10));
-        void (async () => {
-          plugin.settings.refreshInterval = refreshInterval;
-          await plugin.saveSettings();
-        })();
-      });
-  });
+  renderRefreshIntervalSetting(containerEl, plugin);
 
   new Setting(containerEl)
     .setName("Startup refresh delay")

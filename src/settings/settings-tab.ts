@@ -12,7 +12,7 @@
  * Tab name constants / predicates are in ./tab-names.ts (zero Obsidian deps)
  * so tests can import them without pulling in PluginSettingTab.
  */
-import { App, PluginSettingTab } from "obsidian";
+import { App, PluginSettingTab, Setting } from "obsidian";
 import RssDashboardPlugin from "./../../main";
 // Re-export pure helpers for backwards compatibility with any external imports.
 export { SETTINGS_TAB_NAMES, isValidSettingsTab, getInitialTab } from "./tab-names";
@@ -30,6 +30,8 @@ import { renderHighlightsSettingsTab } from "./tabs/highlights-settings-tab";
 import { renderImportExportSettingsTab } from "./tabs/import-export-settings-tab";
 import { renderTagsSettingsTab } from "./tabs/tags-settings-tab";
 import { renderAboutTab } from "./tabs/about-settings-tab";
+import { renderSimpleSettings } from "./tabs/simple-settings";
+import { FeedManagerModal } from "../modals/feed-manager/feed-manager-modal";
 import {
   SETTINGS_TAB_NAMES,
   SettingsTabName,
@@ -44,6 +46,8 @@ export class RssDashboardSettingTab extends PluginSettingTab {
   private currentTab: SettingsTabName = getInitialTab();
   private pendingSection: string | null = null;
   private displaySettingsCleanup: (() => void) | null = null;
+  /** Opening settings shows the simple page until the user asks for more. */
+  private showAllSettings = false;
 
   constructor(app: App, plugin: RssDashboardPlugin) {
     super(app, plugin);
@@ -53,10 +57,17 @@ export class RssDashboardSettingTab extends PluginSettingTab {
   /** Programmatically switch to a named tab and re-render. */
   public activateTab(tabName: string, sectionName?: string): void {
     if (isValidSettingsTab(tabName)) {
+      this.showAllSettings = true;
       this.currentTab = tabName;
       this.pendingSection = sectionName ?? null;
       this.display();
     }
+  }
+
+  /** Closing settings returns to the simple page for next time. */
+  hide(): void {
+    this.showAllSettings = false;
+    super.hide();
   }
 
   /** Refresh the supported legacy settings renderer. */
@@ -69,6 +80,24 @@ export class RssDashboardSettingTab extends PluginSettingTab {
     this.displaySettingsCleanup = null;
     const { containerEl } = this;
     containerEl.empty();
+
+    if (!this.showAllSettings) {
+      renderSimpleSettings(containerEl, this.plugin, {
+        onManageFeeds: () => new FeedManagerModal(this.app, this.plugin).open(),
+        onShowAllSettings: () => {
+          this.showAllSettings = true;
+          this.display();
+        },
+      });
+      return;
+    }
+
+    new Setting(containerEl).addButton((button) =>
+      button.setButtonText("Back to simple settings").onClick(() => {
+        this.showAllSettings = false;
+        this.display();
+      }),
+    );
 
     // ── Tab bar ──────────────────────────────────────────────────────────────
     const tabBar = containerEl.createDiv("rss-dashboard-settings-tab-bar");
