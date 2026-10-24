@@ -28,10 +28,10 @@ export interface ArticleSavingPluginLike {
   saveSettings: () => Promise<void>;
 }
 
-export function renderArticleSavingSettingsTab(
+/** Where the save button adds article links, as tasks. */
+export function renderTaskNoteSetting(
   containerEl: HTMLElement,
-  plugin: ArticleSavingPluginLike,
-  onRefresh: () => void,
+  plugin: Pick<ArticleSavingPluginLike, "settings" | "saveSettings">,
 ): void {
   new Setting(containerEl)
     .setName("Save button adds a task to")
@@ -47,6 +47,14 @@ export function renderArticleSavingSettingsTab(
           await plugin.saveSettings();
         });
     });
+}
+
+export function renderArticleSavingSettingsTab(
+  containerEl: HTMLElement,
+  plugin: ArticleSavingPluginLike,
+  onRefresh: () => void,
+): void {
+  renderTaskNoteSetting(containerEl, plugin);
 
   new Setting(containerEl)
     .setName("Save path")

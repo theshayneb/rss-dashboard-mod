@@ -65,6 +65,8 @@ Version 2.2.0 demo (core experience remains similar).
 
 This repository is a personal fork, published as **RSS Reader** with the plugin id `rss-dashboard-mod`, so it installs next to the original plugin rather than replacing it.
 
+Its settings open on one short page: manage feeds, the auto-refresh interval, the to-do note the save button adds article links to, and Obsidian Sync status. **Show all settings** at the bottom opens everything else.
+
 ### Install with BRAT
 
 1. Install **BRAT** from Obsidian's Community Plugins browser.
