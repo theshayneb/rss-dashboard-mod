@@ -3,12 +3,12 @@ import { isHiddenFromSync } from "../services/feed-storage-repository";
 import type { PortableDataBundle, RssDashboardSettings } from "../types/types";
 
 /**
- * Vault folder for feed shards and article state that Obsidian Sync can
- * carry: no leading "." and outside the config folder. Distinct from the
- * original plugin's suggested `rss-dashboard-data`, so the two plugins never
- * write the same files while both are enabled.
+ * Vault folder for feed shards and article state. Obsidian Sync carries it:
+ * no leading "." and outside the config folder. Distinct from the original
+ * plugin's suggested `rss-dashboard-data`, so the two plugins never write the
+ * same files while both are enabled.
  */
-export const SYNCED_DATA_FOLDER = "rss-dashboard-mod-data";
+export const SYNCED_DATA_FOLDER = "Utilities/RSS Reader";
 export const SYNCED_FEEDS_FOLDER = `${SYNCED_DATA_FOLDER}/feeds`;
 
 /**
@@ -51,35 +51,30 @@ export function hasUnsyncableStorage(
   );
 }
 
-/**
- * Points a bundle's feed and metadata storage at {@link SYNCED_DATA_FOLDER}
- * when they sit somewhere Sync cannot carry. Folders that already sync are
- * kept.
- */
-export function relocateToSyncableFolders(
+/** Whether feeds and article state are stored in the plugin's data folder. */
+export function isInDataFolder(
+  settings: Pick<RssDashboardSettings, "storageFolder" | "metadataStorageFolder">,
+): boolean {
+  const same = (a: string, b: string) =>
+    normalizePath(a.trim()) === normalizePath(b);
+  return (
+    same(settings.storageFolder, SYNCED_FEEDS_FOLDER) &&
+    same(settings.metadataStorageFolder, SYNCED_DATA_FOLDER)
+  );
+}
+
+/** Points a bundle's feed and metadata storage at {@link SYNCED_DATA_FOLDER}. */
+export function relocateToDataFolder(
   bundle: PortableDataBundle,
-  configDir: string,
 ): PortableDataBundle {
-  const storageFolder =
-    bundle.metadata.storageFolder ?? bundle.storageFolder ?? "";
-  const metadataStorageFolder =
-    bundle.metadataStorageFolder ?? bundle.metadata.metadataStorageFolder ?? "";
-
-  const nextStorageFolder = isSyncableFolder(storageFolder, configDir)
-    ? storageFolder
-    : SYNCED_FEEDS_FOLDER;
-  const nextMetadataFolder = isSyncableFolder(metadataStorageFolder, configDir)
-    ? metadataStorageFolder
-    : SYNCED_DATA_FOLDER;
-
   return {
     ...bundle,
-    storageFolder: nextStorageFolder,
-    metadataStorageFolder: nextMetadataFolder,
+    storageFolder: SYNCED_FEEDS_FOLDER,
+    metadataStorageFolder: SYNCED_DATA_FOLDER,
     metadata: {
       ...bundle.metadata,
-      storageFolder: nextStorageFolder,
-      metadataStorageFolder: nextMetadataFolder,
+      storageFolder: SYNCED_FEEDS_FOLDER,
+      metadataStorageFolder: SYNCED_DATA_FOLDER,
     },
   };
 }

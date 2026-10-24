@@ -90,8 +90,8 @@ describe("settings changed by another device", () => {
   });
 });
 
-describe("moving storage to a folder Obsidian Sync carries", () => {
-  it("rewrites shards and article state into the synced folder", async () => {
+describe("moving storage to the Utilities/RSS Reader data folder", () => {
+  it("rewrites shards and article state out of the plugin folder", async () => {
     const app = App.createMock();
     const pluginDir = `${app.vault.configDir}/plugins/rss-dashboard-mod`;
     const plugin = await launch(app, {
@@ -104,33 +104,45 @@ describe("moving storage to a folder Obsidian Sync carries", () => {
     await plugin.saveSettings();
     expect(plugin.hasUnsyncableStorage()).toBe(true);
 
-    expect(await plugin.moveStorageToSyncedFolder()).toBe(true);
+    expect(await plugin.moveStorageToDataFolder()).toBe(true);
 
     const adapter = app.vault.adapter;
-    expect(plugin.settings.storageFolder).toBe("rss-dashboard-mod-data/feeds");
-    expect(plugin.settings.metadataStorageFolder).toBe("rss-dashboard-mod-data");
+    expect(plugin.settings.storageFolder).toBe("Utilities/RSS Reader/feeds");
+    expect(plugin.settings.metadataStorageFolder).toBe("Utilities/RSS Reader");
     expect(
-      await adapter.exists("rss-dashboard-mod-data/feeds/feed-1.json"),
+      await adapter.exists("Utilities/RSS Reader/feeds/feed-1.json"),
     ).toBe(true);
     const userState = JSON.parse(
-      await adapter.read("rss-dashboard-mod-data/user-state.json"),
+      await adapter.read("Utilities/RSS Reader/user-state.json"),
     ) as { states: Record<string, { read?: boolean; starred?: boolean }> };
     expect(Object.values(userState.states)[0]).toMatchObject({
       read: true,
       starred: true,
     });
     expect(plugin.hasUnsyncableStorage()).toBe(false);
+    expect(plugin.isInDataFolder()).toBe(true);
   });
 
-  it("leaves storage that already syncs where it is", async () => {
+  it("moves storage from another vault folder", async () => {
     const plugin = await launch(App.createMock(), {
       ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
       storageMode: "vault-shards-v2",
-      storageFolder: "RSS/feeds",
-      metadataStorageFolder: "RSS",
+      storageFolder: "rss-dashboard-mod-data/feeds",
+      metadataStorageFolder: "rss-dashboard-mod-data",
     });
 
-    expect(await plugin.moveStorageToSyncedFolder()).toBe(false);
-    expect(plugin.settings.storageFolder).toBe("RSS/feeds");
+    expect(await plugin.moveStorageToDataFolder()).toBe(true);
+    expect(plugin.settings.storageFolder).toBe("Utilities/RSS Reader/feeds");
+  });
+
+  it("leaves storage already in the data folder where it is", async () => {
+    const plugin = await launch(App.createMock(), {
+      ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+      storageMode: "vault-shards-v2",
+      storageFolder: "Utilities/RSS Reader/feeds",
+      metadataStorageFolder: "Utilities/RSS Reader",
+    });
+
+    expect(await plugin.moveStorageToDataFolder()).toBe(false);
   });
 });
