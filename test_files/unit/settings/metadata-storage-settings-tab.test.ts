@@ -67,6 +67,7 @@ function createPlugin() {
     hasUnsyncableStorage: vi.fn(() => false),
     isInDataFolder: vi.fn(() => true),
     moveStorageToDataFolder: vi.fn(async () => true),
+    backupAndMigrateStorageToV2: vi.fn(async () => {}),
     importFromOriginalPlugin: vi.fn(async () => "committed" as const),
     importPortableDataBundleFromFile: vi.fn(async () => {}),
     exportPortableDataBundle: vi.fn(async () => {}),

@@ -20,6 +20,7 @@ function createPlugin() {
     hasUnsyncableStorage: vi.fn(() => false),
     isInDataFolder: vi.fn(() => true),
     moveStorageToDataFolder: vi.fn(async () => true),
+    backupAndMigrateStorageToV2: vi.fn(async () => {}),
   };
 }
 

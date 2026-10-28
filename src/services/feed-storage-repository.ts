@@ -2006,7 +2006,7 @@ export class FeedStorageRepository {
       return;
     }
 
-    const userStateFile: UserStateFile = withSyncNonce({
+    const contents: UserStateFile = {
       version: USER_STATE_KEY_VERSION,
       states,
       ...(Object.keys(unattributed).length > 0
@@ -2021,8 +2021,22 @@ export class FeedStorageRepository {
       ...(Object.keys(unrecognizedFeedSinceByFeedId).length > 0
         ? { unrecognizedFeedSinceByFeedId }
         : {}),
-    });
+    };
 
+    // Rewriting an unchanged file would only give it a fresh sync stamp and
+    // a newer modified time. Obsidian Sync keeps the newest copy of a file
+    // changed on two devices, so an idle device that rewrote its stale copy
+    // (on every feed refresh, say) would discard another device's read,
+    // starred, and tag changes still on their way here.
+    if (
+      existing.status === "ok" &&
+      settingsFingerprint(contents) === settingsFingerprint(existing.file)
+    ) {
+      settleRemovals();
+      return;
+    }
+
+    const userStateFile = withSyncNonce(contents);
     const path = this.getUserStatePath(settings);
 
     // Ensure metadata folder exists

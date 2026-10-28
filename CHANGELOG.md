@@ -1,3 +1,10 @@
+## 2.7.11 - October 28, 2026 (RSS Reader)
+
+### Fixes
+
+- Fixed articles marked read, starred, or tagged on one device reverting on another. Every save, including each automatic feed refresh, rewrote `user-state.json` with a fresh sync stamp even when no article's state had changed. Obsidian Sync keeps the newest copy of a file changed on two devices, so an idle device's stale copy could replace another device's changes before they arrived. The file is now written only when an article's state actually changes.
+- When the storage mode is Legacy JSON or Shard storage v1, which keep article state in files every refresh rewrites, the settings page now warns about it and offers **Switch to shard storage v2** (after a backup).
+
 ## 2.7.10 - October 24, 2026 (RSS Reader)
 
 ### Fixes

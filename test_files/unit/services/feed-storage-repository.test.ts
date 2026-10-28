@@ -2900,3 +2900,54 @@ describe("hasUserStateChangedOnDisk()", () => {
     expect(await repository.hasUserStateChangedOnDisk(settings)).toBe(true);
   });
 });
+
+describe("saving when no article state changed", () => {
+  it("leaves user-state.json untouched, so Obsidian Sync keeps another device's newer copy", async () => {
+    const app = App.createMock();
+    const repository = new FeedStorageRepository(app);
+    await app.vault.adapter.mkdir("Utilities/RSS Reader/feeds");
+    const settings = cloneSettings();
+    settings.storageMode = "vault-shards-v2";
+    settings.storageFolder = "Utilities/RSS Reader/feeds";
+    settings.metadataStorageFolder = "Utilities/RSS Reader";
+    settings.feeds = [
+      makeFeed({ feedId: "feed-1", items: [makeItem({ guid: "guid-1" })] }),
+    ];
+    settings.feeds[0].items[0].read = true;
+    await repository.saveUserStateFromFeeds(settings);
+    const path = "Utilities/RSS Reader/user-state.json";
+    const written = await vaultAdapter(app).read(path);
+    const write = vi.spyOn(app.vault.adapter, "write");
+
+    // A feed refresh or settings change saves again with no state change.
+    await repository.saveUserStateFromFeeds(settings);
+
+    expect(write).not.toHaveBeenCalledWith(path, expect.anything());
+    expect(await vaultAdapter(app).read(path)).toBe(written);
+  });
+
+  it("still writes when an article's state changes", async () => {
+    const app = App.createMock();
+    const repository = new FeedStorageRepository(app);
+    await app.vault.adapter.mkdir("Utilities/RSS Reader/feeds");
+    const settings = cloneSettings();
+    settings.storageMode = "vault-shards-v2";
+    settings.storageFolder = "Utilities/RSS Reader/feeds";
+    settings.metadataStorageFolder = "Utilities/RSS Reader";
+    settings.feeds = [
+      makeFeed({ feedId: "feed-1", items: [makeItem({ guid: "guid-1" })] }),
+    ];
+    settings.feeds[0].items[0].read = true;
+    await repository.saveUserStateFromFeeds(settings);
+
+    settings.feeds[0].items[0].starred = true;
+    await repository.saveUserStateFromFeeds(settings);
+
+    const states = (
+      JSON.parse(
+        await vaultAdapter(app).read("Utilities/RSS Reader/user-state.json"),
+      ) as { states: Record<string, { starred?: boolean }> }
+    ).states;
+    expect(states["feed-1:guid-1"]).toMatchObject({ starred: true });
+  });
+});
