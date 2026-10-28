@@ -49,6 +49,7 @@ function createPlugin(overrides: Partial<HintSettings> = {}) {
     hasUnsyncableStorage: vi.fn(() => false),
     isInDataFolder: vi.fn(() => true),
     moveStorageToDataFolder: vi.fn(async () => true),
+    backupAndMigrateStorageToV2: vi.fn(async () => {}),
     importFromOriginalPlugin: vi.fn(async () => "committed" as const),
     repairVaultStorage: vi.fn(async () => ({ skippedFeedCount: 0 })),
   };
@@ -212,5 +213,31 @@ describe("renderStorageSettingsTab() - data folder", () => {
     expect(
       findByText(containerEl, ".setting-item", "stored in Utilities/RSS Reader"),
     ).toBeDefined();
+  });
+});
+
+describe("renderStorageSettingsTab() - older storage modes", () => {
+  function switchButton(containerEl: HTMLElement) {
+    return Array.from(containerEl.querySelectorAll("button")).find(
+      b => b.textContent === "Switch to shard storage v2",
+    );
+  }
+
+  it("warns that an older mode loses synced read state, and switches to v2 with a backup", async () => {
+    const containerEl = document.body.appendChild(createDiv());
+    const plugin = createPlugin({ storageMode: "vault-shards" });
+    renderStorageSettingsTab(containerEl, plugin as never);
+
+    switchButton(containerEl)!.click();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(plugin.backupAndMigrateStorageToV2).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no warning in shard storage v2", () => {
+    const containerEl = document.body.appendChild(createDiv());
+    renderStorageSettingsTab(containerEl, createPlugin() as never);
+
+    expect(switchButton(containerEl)).toBeUndefined();
   });
 });

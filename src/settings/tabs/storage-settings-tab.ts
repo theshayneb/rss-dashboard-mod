@@ -63,6 +63,7 @@ interface StorageSettingsPlugin {
   hasUnsyncableStorage(): boolean;
   isInDataFolder(): boolean;
   moveStorageToDataFolder(): Promise<boolean>;
+  backupAndMigrateStorageToV2(): Promise<void>;
   exportPortableDataBundle(): Promise<void>;
   importFeedBundleFromFile(file: File): Promise<ImportResult>;
   exportFeedBundle(): Promise<void>;
@@ -153,7 +154,46 @@ export type StorageSettingsPluginLike = Pick<
   | "hasUnsyncableStorage"
   | "isInDataFolder"
   | "moveStorageToDataFolder"
+  | "backupAndMigrateStorageToV2"
 >;
+
+/**
+ * Legacy JSON and Shard storage v1 keep read, starred, and tag state in files
+ * every feed refresh rewrites, so two devices overwrite each other's changes
+ * through sync. Shard storage v2 keeps that state in its own file.
+ */
+function renderOlderStorageModeWarning(
+  containerEl: HTMLElement,
+  plugin: StorageSettingsPluginLike,
+): void {
+  if (plugin.settings.storageMode === "vault-shards-v2") return;
+
+  new Setting(containerEl)
+    .setName("Storage mode")
+    .setDesc(
+      "This storage mode keeps read, starred, and tag state in files that every feed refresh rewrites, so devices overwrite each other's changes through sync. Switch to shard storage v2, which keeps that state in its own file. A backup is made first.",
+    )
+    .addButton((button) =>
+      button
+        .setButtonText("Switch to shard storage v2")
+        .setCta()
+        .onClick(() => {
+          void (async () => {
+            try {
+              await plugin.backupAndMigrateStorageToV2();
+              plugin.settingTab?.display();
+            } catch (error) {
+              storageError("Switch to shard storage v2 failed", error);
+              new Notice(
+                `Switching storage mode failed${
+                  error instanceof Error ? `: ${error.message}` : ""
+                }`,
+              );
+            }
+          })();
+        }),
+    );
+}
 
 /**
  * Where feeds and article state are stored, with a button to move them into
@@ -163,6 +203,8 @@ export function renderDataFolderSetting(
   containerEl: HTMLElement,
   plugin: StorageSettingsPluginLike,
 ): void {
+  renderOlderStorageModeWarning(containerEl, plugin);
+
   const setting = new Setting(containerEl).setName("Data folder");
   const syncSettingsHint =
     "To sync across devices, turn on syncing for all other file types and for the active and installed community plugin lists in Obsidian's Sync settings on every device.";
