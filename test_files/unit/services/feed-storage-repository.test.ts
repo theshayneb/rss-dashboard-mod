@@ -2951,3 +2951,77 @@ describe("saving when no article state changed", () => {
     expect(states["feed-1:guid-1"]).toMatchObject({ starred: true });
   });
 });
+
+describe("describeUserStateOnDisk()", () => {
+  const path = "Utilities/RSS Reader/user-state.json";
+
+  async function setUp() {
+    const app = App.createMock();
+    const repository = new FeedStorageRepository(app);
+    await app.vault.adapter.mkdir("Utilities/RSS Reader/feeds");
+    const settings = cloneSettings();
+    settings.storageMode = "vault-shards-v2";
+    settings.storageFolder = "Utilities/RSS Reader/feeds";
+    settings.metadataStorageFolder = "Utilities/RSS Reader";
+    settings.feeds = [
+      makeFeed({
+        feedId: "feed-1",
+        items: [
+          makeItem({ guid: "a" }),
+          makeItem({ guid: "b" }),
+          makeItem({ guid: "c" }),
+        ],
+      }),
+    ];
+    return { app, repository, settings };
+  }
+
+  it("counts unread articles the file says are read, and ones it has no entry for", async () => {
+    const { app, repository, settings } = await setUp();
+    await vaultAdapter(app).write(
+      path,
+      JSON.stringify({
+        version: 3,
+        states: {
+          "feed-1:a": { read: true },
+          "other-feed:x": { read: true },
+        },
+      }),
+    );
+
+    const report = await repository.describeUserStateOnDisk(settings);
+
+    expect(report).toMatchObject({
+      path,
+      status: "ok",
+      entryCount: 2,
+      readEntryCount: 2,
+      entriesForUnknownFeeds: 1,
+      loadedItemCount: 3,
+      unreadItemCount: 3,
+      unreadButReadOnDisk: 1,
+      unreadWithNoEntryOnDisk: 2,
+    });
+  });
+
+  it("reports a missing file", async () => {
+    const { repository, settings } = await setUp();
+
+    const report = await repository.describeUserStateOnDisk(settings);
+
+    expect(report.status).toBe("missing");
+    expect(report.unreadWithNoEntryOnDisk).toBe(3);
+  });
+
+  it("does not stop the watcher from reloading the file it just read", async () => {
+    const { app, repository, settings } = await setUp();
+    await vaultAdapter(app).write(
+      path,
+      JSON.stringify({ version: 3, states: { "feed-1:a": { read: true } } }),
+    );
+
+    await repository.describeUserStateOnDisk(settings);
+
+    expect(await repository.hasUserStateChangedOnDisk(settings)).toBe(true);
+  });
+});

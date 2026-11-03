@@ -1,3 +1,9 @@
+## 2.7.12 - November 3, 2026 (RSS Reader)
+
+### Features
+
+- Added **Sync check** to the settings page and the command palette. It compares this device's articles with the synced article state file (`user-state.json`) and reports: whether the file is there and when it last changed, how many unread articles the file says are read, how many have no entry at all, and whether the file holds entries for feeds this device doesn't know. It suggests what to do about each, and has **Copy report** and **Reload from disk** buttons. **Reload feeds and article state from disk** is also a command.
+
 ## 2.7.11 - October 28, 2026 (RSS Reader)
 
 ### Fixes

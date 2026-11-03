@@ -26,7 +26,11 @@ export type SimpleSettingsPlugin = Pick<
 export function renderSimpleSettings(
   containerEl: HTMLElement,
   plugin: SimpleSettingsPlugin,
-  actions: { onManageFeeds: () => void; onShowAllSettings: () => void },
+  actions: {
+    onManageFeeds: () => void;
+    onCheckSync: () => void;
+    onShowAllSettings: () => void;
+  },
 ): void {
   new Setting(containerEl)
     .setName("Feeds")
@@ -41,6 +45,15 @@ export function renderSimpleSettings(
   renderRefreshIntervalSetting(containerEl, plugin);
   renderTaskNoteSetting(containerEl, plugin);
   renderDataFolderSetting(containerEl, plugin);
+
+  new Setting(containerEl)
+    .setName("Sync check")
+    .setDesc(
+      "Compare this device's read state with the synced file, and reload it from disk.",
+    )
+    .addButton((button) =>
+      button.setButtonText("Check sync").onClick(() => actions.onCheckSync()),
+    );
 
   new Setting(containerEl)
     .setName("All settings")

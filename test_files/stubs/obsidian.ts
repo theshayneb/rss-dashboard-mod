@@ -529,6 +529,7 @@ interface MockVaultAdapter {
   exists(path: string): Promise<boolean>;
   read(path: string): Promise<string>;
   readBinary(path: string): Promise<ArrayBuffer>;
+  stat(path: string): Promise<ObsidianApi.Stat | null>;
   write(path: string, content: string): Promise<void>;
   mkdir(path: string): Promise<void>;
   on(name: string, callback: (...args: unknown[]) => unknown): unknown;
@@ -580,6 +581,17 @@ export class MockDataVault {
       // Not probed: modeled like `read`, throwing ENOENT for a missing path.
       readBinary: async (path: string) =>
         new TextEncoder().encode(this.readFromDisk(path)).buffer,
+      // Not probed: a file's stat with the stub's fixed clock-free times, or
+      // null for a missing path, as Obsidian documents.
+      stat: async (path: string) =>
+        this.adapterFiles.has(path)
+          ? {
+              type: "file" as const,
+              ctime: 0,
+              mtime: 0,
+              size: (this.adapterFiles.get(path) ?? "").length,
+            }
+          : null,
       write: async (path: string, content: string) => {
         // Observed on Obsidian 1.13.7 desktop (Windows): a missing parent
         // folder throws Node's ENOENT, and a written file outside dot folders
