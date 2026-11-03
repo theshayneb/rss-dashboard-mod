@@ -46,6 +46,7 @@ describe("renderSimpleSettings()", () => {
     const containerEl = document.body.appendChild(createDiv());
     renderSimpleSettings(containerEl, createPlugin(), {
       onManageFeeds: vi.fn(),
+      onCheckSync: vi.fn(),
       onShowAllSettings: vi.fn(),
     });
 
@@ -54,6 +55,7 @@ describe("renderSimpleSettings()", () => {
       "Auto-refresh interval",
       "Save button adds a task to",
       "Data folder",
+      "Sync check",
       "All settings",
     ]);
   });
@@ -64,6 +66,7 @@ describe("renderSimpleSettings()", () => {
     const onShowAllSettings = vi.fn();
     renderSimpleSettings(containerEl, createPlugin(), {
       onManageFeeds,
+      onCheckSync: vi.fn(),
       onShowAllSettings,
     });
 
@@ -79,6 +82,7 @@ describe("renderSimpleSettings()", () => {
     const plugin = createPlugin();
     renderSimpleSettings(containerEl, plugin, {
       onManageFeeds: vi.fn(),
+      onCheckSync: vi.fn(),
       onShowAllSettings: vi.fn(),
     });
 

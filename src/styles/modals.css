@@ -1282,3 +1282,10 @@ body .modal.rss-mobile-navigation-modal .rss-dashboard-sidebar-resize-handle {
     transform: translateX(0);
   }
 }
+
+.rss-dashboard-sync-check-report {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  resize: vertical;
+}

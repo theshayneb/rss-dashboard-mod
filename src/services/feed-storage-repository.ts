@@ -168,6 +168,23 @@ function createFeedId(): string {
   return `feed-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** What the sync check reports about user-state.json on this device. */
+export interface UserStateDiskReport {
+  path: string;
+  status: "ok" | "missing" | "unreadable";
+  modifiedAt: number | null;
+  entryCount: number;
+  readEntryCount: number;
+  /** Entries whose feed id is not in this device's feed list. */
+  entriesForUnknownFeeds: number;
+  loadedItemCount: number;
+  unreadItemCount: number;
+  /** Unread here, but the file on disk says read: a reload would fix them. */
+  unreadButReadOnDisk: number;
+  /** Unread here with no entry on disk at all. */
+  unreadWithNoEntryOnDisk: number;
+}
+
 export function normalizeFolderPath(path: string): string {
   const trimmed = path.trim().replace(/\\/g, "/");
   if (!trimmed) return ".rss-dashboard-data/feeds";
@@ -1726,6 +1743,72 @@ export class FeedStorageRepository {
     } catch {
       return true;
     }
+  }
+
+  /**
+   * Compares the article state in user-state.json on disk with what this
+   * device shows, for the sync check. Reads the file without recording it as
+   * seen, so the watcher still reloads for it.
+   */
+  public async describeUserStateOnDisk(
+    settings: RssDashboardSettings,
+  ): Promise<UserStateDiskReport> {
+    const path = this.getUserStatePath(settings);
+    const report: UserStateDiskReport = {
+      path,
+      status: "missing",
+      modifiedAt: null,
+      entryCount: 0,
+      readEntryCount: 0,
+      entriesForUnknownFeeds: 0,
+      loadedItemCount: 0,
+      unreadItemCount: 0,
+      unreadButReadOnDisk: 0,
+      unreadWithNoEntryOnDisk: 0,
+    };
+
+    let file: UserStateFile | null = null;
+    if (await this.app.vault.adapter.exists(path)) {
+      const stat = await this.app.vault.adapter.stat(path);
+      report.modifiedAt = stat?.mtime ?? null;
+      try {
+        const parsed = JSON.parse(
+          await this.app.vault.adapter.read(path),
+        ) as UserStateFile;
+        if (parsed && typeof parsed.states === "object") {
+          file = parsed;
+          report.status = "ok";
+        } else {
+          report.status = "unreadable";
+        }
+      } catch {
+        report.status = "unreadable";
+      }
+    }
+
+    const { states } = this.resolvePersistedUserState(file, settings);
+    const feedIds = new Set(settings.feeds.map((feed) => feed.feedId ?? ""));
+    for (const [key, state] of Object.entries(states)) {
+      report.entryCount++;
+      if (state.read) report.readEntryCount++;
+      if (!feedIds.has(feedIdOfStateKey(key))) report.entriesForUnknownFeeds++;
+    }
+
+    for (const feed of settings.feeds) {
+      for (const item of feed.items) {
+        report.loadedItemCount++;
+        if (item.read) continue;
+        report.unreadItemCount++;
+        const state = states[userStateKey(feed.feedId ?? "", item.guid)];
+        if (!state) {
+          report.unreadWithNoEntryOnDisk++;
+        } else if (state.read) {
+          report.unreadButReadOnDisk++;
+        }
+      }
+    }
+
+    return report;
   }
 
   public async loadUserState(settings: RssDashboardSettings): Promise<UserStateFile | null> {

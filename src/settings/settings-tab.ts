@@ -84,6 +84,7 @@ export class RssDashboardSettingTab extends PluginSettingTab {
     if (!this.showAllSettings) {
       renderSimpleSettings(containerEl, this.plugin, {
         onManageFeeds: () => new FeedManagerModal(this.app, this.plugin).open(),
+        onCheckSync: () => void this.plugin.openSyncCheck(),
         onShowAllSettings: () => {
           this.showAllSettings = true;
           this.display();

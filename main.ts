@@ -71,6 +71,8 @@ import {
   readOriginalPluginSnapshot,
 } from "./src/utils/original-plugin-import";
 import { settingsFingerprint } from "./src/utils/settings-fingerprint";
+import { formatSyncCheckReport } from "./src/utils/sync-check-report";
+import { SyncCheckModal } from "./src/modals/sync-check-modal";
 import {
   SYNCED_DATA_FOLDER,
   SYNCED_FEEDS_FOLDER,
@@ -1298,6 +1300,22 @@ export default class RssDashboardPlugin extends Plugin {
       }
 
       this.addCommand({
+        id: "check-sync",
+        name: "Check sync",
+        callback: () => {
+          void this.openSyncCheck();
+        },
+      });
+
+      this.addCommand({
+        id: "reload-from-disk",
+        name: "Reload feeds and article state from disk",
+        callback: () => {
+          void this.reloadFromDisk();
+        },
+      });
+
+      this.addCommand({
         id: "import-usersettings-json",
         name: "Import user preferences",
         callback: () => {
@@ -2362,6 +2380,39 @@ export default class RssDashboardPlugin extends Plugin {
   /** Whether some storage sits in a folder Obsidian Sync cannot carry. */
   public hasUnsyncableStorage(): boolean {
     return hasUnsyncableStorage(this.settings, this.app.vault.configDir);
+  }
+
+  /**
+   * Builds the sync check report: this device's article state against the
+   * user-state.json Obsidian Sync carries.
+   */
+  public async getSyncCheckReport(): Promise<string> {
+    return formatSyncCheckReport({
+      version: this.manifest.version,
+      isMobile: Platform.isMobile,
+      storageMode: this.settings.storageMode,
+      storageFolder: this.settings.storageFolder,
+      feedCount: this.settings.feeds.length,
+      unloadedFeedCount: this.getUnloadedShardFeedCount(),
+      userState: await this.feedStorageRepository.describeUserStateOnDisk(
+        this.settings,
+      ),
+      checkedAt: new Date(),
+    });
+  }
+
+  /** Opens the sync check report. */
+  public async openSyncCheck(): Promise<void> {
+    new SyncCheckModal(this.app, await this.getSyncCheckReport(), () =>
+      this.reloadFromDisk(),
+    ).open();
+  }
+
+  /** Re-reads settings and article state from disk and redraws. */
+  public async reloadFromDisk(): Promise<void> {
+    await this.loadSettings();
+    await this.refreshDashboardViewsKeepingScroll();
+    new Notice("Reloaded feeds and article state from disk.");
   }
 
   /** Whether feeds and article state are in the plugin's data folder. */
