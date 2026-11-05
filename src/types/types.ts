@@ -432,7 +432,27 @@ export type FeedStorageMode =
   | "vault-shards"
   | "vault-shards-v2";
 
+/** The parts of an article's state that are merged across devices. */
+export type ArticleUserStateField =
+  | "read"
+  | "starred"
+  | "saved"
+  | "tags"
+  | "savedFilePath"
+  | "playbackProgress";
+
 export interface ArticleUserState {
+  /**
+   * When this state was last changed, on whichever device changed it: the
+   * latest of {@link changedAt}.
+   */
+  updatedAt?: number;
+  /**
+   * When each field was last changed. With one article state file per
+   * device, each field takes its newest value from any device's file, so
+   * starring an article on one device cannot undo marking it read on another.
+   */
+  changedAt?: Partial<Record<ArticleUserStateField, number>>;
   read?: boolean;
   starred?: boolean;
   tags?: Tag[];

@@ -1,3 +1,9 @@
+## 2.7.14 - November 5, 2026 (RSS Reader)
+
+### Fixes
+
+- Fixed read, starred, and tag changes being lost between devices. Every device wrote the same `user-state.json`, and Obsidian Sync keeps only the newest copy of a file changed on two devices, so whichever device saved first lost the other's changes that hadn't arrived yet (a sync check showed the desktop and phone holding different copies minutes apart). Each device now writes its own `user-state.<device>.json` in the data folder, and the plugin merges every device's file field by field, keeping each article's newest read, starred, saved, tag, and playback change. Marking an article read on the phone and starring it on the desktop keeps both. The previous `user-state.json` is still read, so existing state carries over. **Update every device**: a device still on an older version keeps rewriting the shared file.
+
 ## 2.7.13 - November 5, 2026 (RSS Reader)
 
 ### Changes

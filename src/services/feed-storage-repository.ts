@@ -10,6 +10,8 @@ import type {
   RssDashboardSettings,
   SettingsBundle,
   ArticleUserState,
+  ArticleUserStateField,
+  Tag,
   UserStateFile,
   FeedShardHealth,
 } from "../types/types";
@@ -67,14 +69,188 @@ function applyUserStateToItem(item: FeedItem, state: ArticleUserState): void {
  * entry and an all-default one are the same state.
  */
 function userStateSignature(state: ArticleUserState | undefined): string {
-  return JSON.stringify([
+  return JSON.stringify(userStateFieldValues(state));
+}
+
+const USER_STATE_FIELDS: readonly ArticleUserStateField[] = [
+  "read",
+  "starred",
+  "saved",
+  "tags",
+  "savedFilePath",
+  "playbackProgress",
+];
+
+/** Each field's value, defaults filled in, in {@link USER_STATE_FIELDS} order. */
+function userStateFieldValues(state: ArticleUserState | undefined): unknown[] {
+  return [
     Boolean(state?.read),
     Boolean(state?.starred),
     Boolean(state?.saved),
     state?.tags && state.tags.length > 0 ? state.tags : [],
     state?.savedFilePath ?? "",
     state?.playbackProgress ?? null,
-  ]);
+  ];
+}
+
+/** Builds an entry from field values, with each field's change time. */
+function userStateFromFieldValues(
+  values: unknown[],
+  changedAt: Partial<Record<ArticleUserStateField, number>>,
+): ArticleUserState {
+  const [read, starred, saved, tags, savedFilePath, playbackProgress] = values;
+  const state: ArticleUserState = {
+    read: Boolean(read),
+    starred: Boolean(starred),
+    saved: Boolean(saved),
+  };
+  if (Array.isArray(tags) && tags.length > 0) {
+    state.tags = cloneJson(tags as Tag[]);
+  }
+  if (typeof savedFilePath === "string" && savedFilePath) {
+    state.savedFilePath = savedFilePath;
+  }
+  if (playbackProgress) {
+    state.playbackProgress = cloneJson(
+      playbackProgress as NonNullable<ArticleUserState["playbackProgress"]>,
+    );
+  }
+  state.updatedAt = Math.max(
+    0,
+    ...Object.values(changedAt).filter(
+      (at): at is number => typeof at === "number",
+    ),
+  );
+  state.changedAt = changedAt;
+  return state;
+}
+
+/** When a field of an entry last changed, falling back to the whole entry. */
+function fieldChangedAt(
+  state: ArticleUserState,
+  field: ArticleUserStateField,
+  fallback: number,
+): number {
+  return state.changedAt?.[field] ?? state.updatedAt ?? fallback;
+}
+
+/**
+ * This device's entry for an article after a save: fields changed here since
+ * this device last read or wrote the article take the local value, dated now;
+ * the rest keep the value and date on disk, which may come from another
+ * device.
+ */
+function mergeLocalUserStateChange(
+  local: ArticleUserState,
+  knownSignature: string | undefined,
+  baseline: ArticleUserState | undefined,
+  now: number,
+): ArticleUserState {
+  const knownValues = knownSignature
+    ? (JSON.parse(knownSignature) as unknown[])
+    : undefined;
+  const localValues = userStateFieldValues(local);
+  const baselineValues = baseline ? userStateFieldValues(baseline) : undefined;
+  const values: unknown[] = [];
+  const changedAt: Partial<Record<ArticleUserStateField, number>> = {};
+
+  USER_STATE_FIELDS.forEach((field, index) => {
+    const changedHere =
+      !knownValues ||
+      JSON.stringify(localValues[index]) !== JSON.stringify(knownValues[index]);
+    if (changedHere) {
+      values[index] = localValues[index];
+      changedAt[field] = now;
+    } else if (baseline && baselineValues) {
+      values[index] = baselineValues[index];
+      changedAt[field] = fieldChangedAt(baseline, field, 0);
+    } else {
+      values[index] = localValues[index];
+      changedAt[field] = 0;
+    }
+  });
+
+  return userStateFromFieldValues(values, changedAt);
+}
+
+/** `user-state.json`, or one device's `user-state.<deviceId>.json`. */
+const USER_STATE_FILE_NAME = /^user-state(\.[A-Za-z0-9_-]+)?\.json$/;
+
+interface UserStateSource {
+  file: UserStateFile;
+  modifiedAt: number;
+  isOwn: boolean;
+}
+
+/**
+ * Merges every device's article state file into one, keeping each field of
+ * each article at its most recently changed value. An entry with no change
+ * times (written before per-device files, or by an older version) counts as
+ * changed when its file was. This device's file wins a tie. Bookkeeping comes
+ * from this device's file, or else the most recently changed one.
+ */
+export function mergeUserStateSources(sources: UserStateSource[]): UserStateFile {
+  const ordered = [...sources].sort(
+    (a, b) => Number(a.isOwn) - Number(b.isOwn) || a.modifiedAt - b.modifiedAt,
+  );
+  const newest = new Map<
+    string,
+    { values: unknown[]; changedAt: Partial<Record<ArticleUserStateField, number>> }
+  >();
+  const legacy: Record<string, ArticleUserState> = {};
+
+  for (const { file, modifiedAt } of ordered) {
+    const isMigrated = file.version >= USER_STATE_QUALIFIED_VERSION;
+    Object.assign(
+      legacy,
+      cloneJson(isMigrated ? (file.unattributedLegacyStates ?? {}) : file.states),
+    );
+    if (!isMigrated) continue;
+    for (const [key, state] of Object.entries(file.states)) {
+      const values = userStateFieldValues(state);
+      const best = newest.get(key) ?? { values: [], changedAt: {} };
+      USER_STATE_FIELDS.forEach((field, index) => {
+        const at = fieldChangedAt(state, field, modifiedAt);
+        const bestAt = best.changedAt[field];
+        if (bestAt === undefined || at >= bestAt) {
+          best.values[index] = values[index];
+          best.changedAt[field] = at;
+        }
+      });
+      newest.set(key, best);
+    }
+  }
+
+  const states: Record<string, ArticleUserState> = {};
+  for (const [key, { values, changedAt }] of newest) {
+    states[key] = userStateFromFieldValues(values, changedAt);
+  }
+
+  const bookkeeping =
+    ordered.find((source) => source.isOwn)?.file ??
+    ordered[ordered.length - 1]?.file;
+  return {
+    version: USER_STATE_KEY_VERSION,
+    states,
+    ...(Object.keys(legacy).length > 0 ? { unattributedLegacyStates: legacy } : {}),
+    ...(bookkeeping?.missingSinceByStateKey
+      ? { missingSinceByStateKey: cloneJson(bookkeeping.missingSinceByStateKey) }
+      : {}),
+    ...(bookkeeping?.unattributedFirstObservedAtByGuid
+      ? {
+          unattributedFirstObservedAtByGuid: cloneJson(
+            bookkeeping.unattributedFirstObservedAtByGuid,
+          ),
+        }
+      : {}),
+    ...(bookkeeping?.unrecognizedFeedSinceByFeedId
+      ? {
+          unrecognizedFeedSinceByFeedId: cloneJson(
+            bookkeeping.unrecognizedFeedSinceByFeedId,
+          ),
+        }
+      : {}),
+  };
 }
 
 function feedIdOfStateKey(key: string): string {
@@ -449,6 +625,9 @@ export class FeedStorageRepository {
   private warnedUserStateUnreadable = false;
   /** user-state.json as this device last read or wrote it, minus its sync stamp. */
   private lastUserStateFingerprint: string | null = null;
+  private deviceId?: string;
+  /** Each article state file as this device last read it, minus its sync stamp. */
+  private lastSeenUserStateByPath = new Map<string, string>();
   private userStateUnreadable = false;
   private onUserStateHealthChange?: () => void;
   private app: App;
@@ -458,11 +637,21 @@ export class FeedStorageRepository {
     options?: {
       writeWrapper?: <T>(fn: () => Promise<T>) => Promise<T>;
       onUserStateHealthChange?: () => void;
+      /**
+       * Identifies this device. With it, each device writes article state to
+       * its own `user-state.<deviceId>.json`, and every device's file is read
+       * and merged entry by entry, newest change first. Obsidian Sync keeps
+       * only the newest copy of a file two devices change, so one shared file
+       * lost whichever device's changes had not arrived before the other
+       * saved. Without it, the single shared `user-state.json` is used.
+       */
+      deviceId?: string;
     },
   ) {
     this.app = app;
     this.writeWrapper = options?.writeWrapper;
     this.onUserStateHealthChange = options?.onUserStateHealthChange;
+    this.deviceId = options?.deviceId;
   }
 
   public isUserStateUnreadable(): boolean {
@@ -1682,11 +1871,49 @@ export class FeedStorageRepository {
   }
 
   public getUserStatePath(settings: RssDashboardSettings): string {
+    return normalizePath(`${this.getUserStateFolder(settings)}/user-state.json`);
+  }
+
+  private getUserStateFolder(settings: RssDashboardSettings): string {
     let folder = settings.metadataStorageFolder.trim();
     if (!folder) {
       folder = ".rss-dashboard-data";
     }
-    return normalizePath(`${folder.replace(/^\/+|\/+$/g, "")}/user-state.json`);
+    return normalizePath(folder.replace(/^\/+|\/+$/g, ""));
+  }
+
+  /** The article state file this device writes. */
+  public getOwnUserStatePath(settings: RssDashboardSettings): string {
+    if (!this.deviceId) return this.getUserStatePath(settings);
+    return normalizePath(
+      `${this.getUserStateFolder(settings)}/user-state.${this.deviceId}.json`,
+    );
+  }
+
+  /** Whether a path is one of the article state files this device reads. */
+  public isUserStateFilePath(
+    settings: RssDashboardSettings,
+    path: string,
+  ): boolean {
+    const normalized = normalizePath(path.replace(/^\/+|\/+$/g, ""));
+    if (!this.deviceId) return normalized === this.getUserStatePath(settings);
+    const folder = this.getUserStateFolder(settings);
+    return (
+      normalized.startsWith(`${folder}/`) &&
+      USER_STATE_FILE_NAME.test(normalized.slice(folder.length + 1))
+    );
+  }
+
+  private async listUserStatePaths(
+    settings: RssDashboardSettings,
+  ): Promise<string[]> {
+    const folder = this.getUserStateFolder(settings);
+    if (!(await this.app.vault.adapter.exists(folder))) return [];
+    const { files } = await this.app.vault.adapter.list(folder);
+    return files
+      .map((file) => normalizePath(file))
+      .filter((file) => this.isUserStateFilePath(settings, file))
+      .sort();
   }
 
   /**
@@ -1710,11 +1937,22 @@ export class FeedStorageRepository {
 
   private async readUserState(
     settings: RssDashboardSettings,
+    record = true,
   ): Promise<
     | { status: "missing" }
     | { status: "unreadable" }
-    | { status: "ok"; file: UserStateFile }
+    | {
+        status: "ok";
+        file: UserStateFile;
+        /** This device's own file, when per-device files are in use. */
+        ownFile?: UserStateFile | null;
+        latestModifiedAt?: number | null;
+        sourceCount?: number;
+      }
   > {
+    if (this.deviceId) {
+      return this.readDeviceUserStates(settings, record);
+    }
     const path = this.getUserStatePath(settings);
     if (!(await this.app.vault.adapter.exists(path))) {
       return { status: "missing" };
@@ -1723,13 +1961,74 @@ export class FeedStorageRepository {
       const raw = await this.app.vault.adapter.read(path);
       const parsed = JSON.parse(raw) as UserStateFile;
       if (parsed && typeof parsed.states === "object") {
-        this.lastUserStateFingerprint = settingsFingerprint(parsed);
+        if (record) {
+          this.lastUserStateFingerprint = settingsFingerprint(parsed);
+        }
         return { status: "ok", file: parsed };
       }
     } catch (e) {
       storageError("Failed to parse user-state.json", e);
     }
     return { status: "unreadable" };
+  }
+
+  /**
+   * Reads every device's article state file and merges them. This device's
+   * own file being unreadable blocks saving, as with the single file; another
+   * device's file that is unreadable (perhaps half-synced) is skipped.
+   */
+  private async readDeviceUserStates(
+    settings: RssDashboardSettings,
+    record: boolean,
+  ): Promise<
+    | { status: "missing" }
+    | { status: "unreadable" }
+    | {
+        status: "ok";
+        file: UserStateFile;
+        ownFile: UserStateFile | null;
+        latestModifiedAt: number | null;
+        sourceCount: number;
+      }
+  > {
+    const ownPath = this.getOwnUserStatePath(settings);
+    const sources: UserStateSource[] = [];
+    let ownFile: UserStateFile | null = null;
+    let latestModifiedAt: number | null = null;
+
+    for (const path of await this.listUserStatePaths(settings)) {
+      try {
+        const parsed = JSON.parse(
+          await this.app.vault.adapter.read(path),
+        ) as UserStateFile;
+        if (!parsed || typeof parsed.states !== "object") {
+          throw new Error("missing states");
+        }
+        const modifiedAt =
+          (await this.app.vault.adapter.stat(path))?.mtime ?? 0;
+        latestModifiedAt = Math.max(latestModifiedAt ?? 0, modifiedAt);
+        if (record) {
+          this.lastSeenUserStateByPath.set(path, settingsFingerprint(parsed));
+        }
+        if (path === ownPath) ownFile = parsed;
+        sources.push({ file: parsed, modifiedAt, isOwn: path === ownPath });
+      } catch (e) {
+        if (path === ownPath) {
+          storageError("Failed to parse this device's user-state file", e);
+          return { status: "unreadable" };
+        }
+        storageError("Skipped another device's unreadable user-state file", e);
+      }
+    }
+
+    if (sources.length === 0) return { status: "missing" };
+    return {
+      status: "ok",
+      file: mergeUserStateSources(sources),
+      ownFile,
+      latestModifiedAt,
+      sourceCount: sources.length,
+    };
   }
 
   /**
@@ -1741,7 +2040,27 @@ export class FeedStorageRepository {
    */
   public async hasUserStateChangedOnDisk(
     settings: RssDashboardSettings,
+    changedPath?: string,
   ): Promise<boolean> {
+    if (this.deviceId) {
+      const ownPath = this.getOwnUserStatePath(settings);
+      const paths = changedPath
+        ? [normalizePath(changedPath)]
+        : await this.listUserStatePaths(settings);
+      for (const path of paths) {
+        if (path === ownPath) continue;
+        try {
+          if (!(await this.app.vault.adapter.exists(path))) return true;
+          const onDisk = settingsFingerprint(
+            JSON.parse(await this.app.vault.adapter.read(path)),
+          );
+          if (onDisk !== this.lastSeenUserStateByPath.get(path)) return true;
+        } catch {
+          return true;
+        }
+      }
+      return false;
+    }
     const path = this.getUserStatePath(settings);
     try {
       if (!(await this.app.vault.adapter.exists(path))) return true;
@@ -1779,22 +2098,19 @@ export class FeedStorageRepository {
       samplesWithNoEntry: [],
     };
 
+    // Read without recording the files as seen, so the watcher still
+    // reloads for them.
+    const result = await this.readUserState(settings, false);
     let file: UserStateFile | null = null;
-    if (await this.app.vault.adapter.exists(path)) {
-      const stat = await this.app.vault.adapter.stat(path);
-      report.modifiedAt = stat?.mtime ?? null;
-      try {
-        const parsed = JSON.parse(
-          await this.app.vault.adapter.read(path),
-        ) as UserStateFile;
-        if (parsed && typeof parsed.states === "object") {
-          file = parsed;
-          report.status = "ok";
-        } else {
-          report.status = "unreadable";
-        }
-      } catch {
-        report.status = "unreadable";
+    report.status = result.status;
+    if (result.status === "ok") {
+      file = result.file;
+      report.modifiedAt =
+        result.latestModifiedAt ??
+        (await this.app.vault.adapter.stat(path))?.mtime ??
+        null;
+      if (result.sourceCount !== undefined) {
+        report.path = `${this.getOwnUserStatePath(settings)} (merged from ${result.sourceCount} device file${result.sourceCount === 1 ? "" : "s"})`;
       }
     }
 
@@ -1979,7 +2295,14 @@ export class FeedStorageRepository {
           continue;
         }
 
-        const state = userStateFromItem(item);
+        const local = userStateFromItem(item);
+        // Only the fields changed here are dated now; the rest keep when they
+        // last changed, on whichever device, so they cannot outrank a newer
+        // change in another device's file.
+        const state = this.deviceId
+          ? mergeLocalUserStateChange(local, knownState, baseline, now)
+          : local;
+        if (this.deviceId) applyUserStateToItem(item, state);
         states[key] = state;
         this.knownUserStateByKey.set(key, userStateSignature(state));
       }
@@ -2136,16 +2459,22 @@ export class FeedStorageRepository {
     // changed on two devices, so an idle device that rewrote its stale copy
     // (on every feed refresh, say) would discard another device's read,
     // starred, and tag changes still on their way here.
+    const previouslyWritten =
+      existing.status !== "ok"
+        ? null
+        : this.deviceId
+          ? (existing.ownFile ?? null)
+          : existing.file;
     if (
-      existing.status === "ok" &&
-      settingsFingerprint(contents) === settingsFingerprint(existing.file)
+      previouslyWritten &&
+      settingsFingerprint(contents) === settingsFingerprint(previouslyWritten)
     ) {
       settleRemovals();
       return;
     }
 
     const userStateFile = withSyncNonce(contents);
-    const path = this.getUserStatePath(settings);
+    const path = this.getOwnUserStatePath(settings);
 
     // Ensure metadata folder exists
     let folder = settings.metadataStorageFolder.trim();

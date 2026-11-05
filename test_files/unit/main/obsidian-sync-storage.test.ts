@@ -50,6 +50,7 @@ function sampleFeed(): Feed {
 }
 
 async function launch(app: App, data: unknown): Promise<RssDashboardPlugin> {
+  app.saveLocalStorage("rss-reader-device-id", "desktop-test");
   const plugin = new RssDashboardPlugin(app, manifest());
   plugin.loadData = vi.fn().mockResolvedValue(data);
   plugin.saveData = vi.fn().mockResolvedValue(undefined);
@@ -142,7 +143,7 @@ describe("moving storage to the Utilities/RSS Reader data folder", () => {
       await adapter.exists("Utilities/RSS Reader/feeds/feed-1.json"),
     ).toBe(true);
     const userState = JSON.parse(
-      await adapter.read("Utilities/RSS Reader/user-state.json"),
+      await adapter.read("Utilities/RSS Reader/user-state.desktop-test.json"),
     ) as { states: Record<string, { read?: boolean; starred?: boolean }> };
     expect(Object.values(userState.states)[0]).toMatchObject({
       read: true,
@@ -177,9 +178,19 @@ describe("moving storage to the Utilities/RSS Reader data folder", () => {
 });
 
 describe("article state changed by another device", () => {
-  const userStatePath = "Utilities/RSS Reader/user-state.json";
+  const otherDevicePath = "Utilities/RSS Reader/user-state.mobile-other.json";
 
   async function startWatching(app: App) {
+    app.saveLocalStorage("rss-reader-device-id", "desktop-test");
+    await app.vault.adapter.mkdir("Utilities/RSS Reader/feeds");
+    // The phone's file, already synced in before Obsidian starts here.
+    await app.vault.adapter.write(
+      otherDevicePath,
+      JSON.stringify({
+        version: 3,
+        states: { "feed-1:https://example.com/1": { read: true, updatedAt: 1 } },
+      }),
+    );
     const handlers: Record<string, (...args: unknown[]) => void> = {};
     app.vault.on = vi.fn(
       (event: string, callback: (...args: unknown[]) => void) => {
@@ -201,7 +212,11 @@ describe("article state changed by another device", () => {
     const reload = vi.spyOn(plugin, "loadSettings").mockResolvedValue();
     // Let the watcher's suppression of the plugin's own save expire.
     (plugin as unknown as { suppressWatcherUntil: number }).suppressWatcherUntil = 0;
-    return { plugin, reload, modify: () => handlers.modify?.({ path: userStatePath }) };
+    return {
+      plugin,
+      reload,
+      modify: (path = otherDevicePath) => handlers.modify?.({ path }),
+    };
   }
 
   async function settle(): Promise<void> {
@@ -209,15 +224,17 @@ describe("article state changed by another device", () => {
     await vi.advanceTimersByTimeAsync(2000);
   }
 
-  it("reloads when user-state.json in the data folder brings a real change", async () => {
+  it("reloads when another device's article state file brings a real change", async () => {
     vi.useFakeTimers();
     const app = App.createMock();
     const { reload, modify } = await startWatching(app);
-    const file = JSON.parse(await app.vault.adapter.read(userStatePath)) as {
-      states: Record<string, unknown>;
-    };
-    file.states = { "feed-1:https://example.com/1": { read: false } };
-    await app.vault.adapter.write(userStatePath, JSON.stringify(file));
+    await app.vault.adapter.write(
+      otherDevicePath,
+      JSON.stringify({
+        version: 3,
+        states: { "feed-1:https://example.com/1": { read: false, updatedAt: 2 } },
+      }),
+    );
 
     modify();
     await settle();
@@ -229,14 +246,25 @@ describe("article state changed by another device", () => {
     vi.useFakeTimers();
     const app = App.createMock();
     const { reload, modify } = await startWatching(app);
-    const file = JSON.parse(await app.vault.adapter.read(userStatePath)) as Record<
+    const file = JSON.parse(await app.vault.adapter.read(otherDevicePath)) as Record<
       string,
       unknown
     >;
     file._syncNonce = "999-1";
-    await app.vault.adapter.write(userStatePath, JSON.stringify(file));
+    await app.vault.adapter.write(otherDevicePath, JSON.stringify(file));
 
     modify();
+    await settle();
+
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("does not reload for this device's own article state file", async () => {
+    vi.useFakeTimers();
+    const app = App.createMock();
+    const { reload, modify } = await startWatching(app);
+
+    modify("Utilities/RSS Reader/user-state.desktop-test.json");
     await settle();
 
     expect(reload).not.toHaveBeenCalled();
