@@ -71,6 +71,7 @@ import {
   readOriginalPluginSnapshot,
 } from "./src/utils/original-plugin-import";
 import { settingsFingerprint } from "./src/utils/settings-fingerprint";
+import { getOrCreateDeviceId } from "./src/utils/device-id";
 import { formatSyncCheckReport } from "./src/utils/sync-check-report";
 import { SyncCheckModal } from "./src/modals/sync-check-modal";
 import {
@@ -362,6 +363,7 @@ export default class RssDashboardPlugin extends Plugin {
       },
     });
     this.feedStorageRepository = new FeedStorageRepository(app, {
+      deviceId: getOrCreateDeviceId(app, Platform.isMobile),
       writeWrapper: (fn) => this.writeWithWatcherSuppressed(fn),
       onUserStateHealthChange: () => {
         void this.notifyRefreshStatusChanged();
@@ -3248,9 +3250,9 @@ export default class RssDashboardPlugin extends Plugin {
    */
   private isUserStatePath(filePath: string): boolean {
     if (!this.settings) return false;
-    return (
-      filePath.replace(/^\/+|\/+$/g, "") ===
-      this.feedStorageRepository.getUserStatePath(this.settings)
+    return this.feedStorageRepository.isUserStateFilePath(
+      this.settings,
+      filePath,
     );
   }
 
@@ -3322,12 +3324,16 @@ export default class RssDashboardPlugin extends Plugin {
       }
 
       void (async () => {
-        if (
-          await this.feedStorageRepository.hasUserStateChangedOnDisk(
-            this.settings,
-          )
-        ) {
-          this.scheduleExternalSettingsReload();
+        for (const candidatePath of candidatePaths) {
+          if (
+            await this.feedStorageRepository.hasUserStateChangedOnDisk(
+              this.settings,
+              candidatePath,
+            )
+          ) {
+            this.scheduleExternalSettingsReload();
+            return;
+          }
         }
       })();
     };

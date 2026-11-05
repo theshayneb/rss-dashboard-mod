@@ -54,6 +54,7 @@ interface Launch {
 // Each launch gets its own plugin instance over a shared vault, the way a
 // restart re-reads data.json and the vault files the last session wrote.
 async function launch(app: App, data: unknown): Promise<Launch> {
+  app.saveLocalStorage("rss-reader-device-id", "desktop-test");
   let persisted: unknown = data;
   const plugin = new RssDashboardPlugin(app, manifest());
   plugin.loadData = vi.fn().mockResolvedValue(data);
@@ -82,7 +83,9 @@ describe("Storage location for a fresh install", () => {
 
     const adapter = app.vault.adapter;
     expect(await adapter.exists("Utilities/RSS Reader/feeds/feed-1.json")).toBe(true);
-    expect(await adapter.exists("Utilities/RSS Reader/user-state.json")).toBe(true);
+    expect(
+      await adapter.exists("Utilities/RSS Reader/user-state.desktop-test.json"),
+    ).toBe(true);
     expect(await adapter.exists(`${PLUGIN_DIR}/data/user-state.json`)).toBe(false);
     expect(await adapter.exists(".rss-dashboard-data/user-state.json")).toBe(false);
     expect(await adapter.exists(".rss-dashboard-data/feeds/feed-1.json")).toBe(false);
@@ -118,7 +121,9 @@ describe("Storage location for a fresh install", () => {
     expect(plugin.settings.storageFolder).toBe(".rss-dashboard-data/feeds");
     expect(plugin.settings.metadataStorageFolder).toBe(".rss-dashboard-data");
     expect(
-      await app.vault.adapter.exists(".rss-dashboard-data/user-state.json"),
+      await app.vault.adapter.exists(
+        ".rss-dashboard-data/user-state.desktop-test.json",
+      ),
     ).toBe(true);
   });
 

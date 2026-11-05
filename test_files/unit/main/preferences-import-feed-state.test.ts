@@ -26,6 +26,8 @@ interface VaultAdapterStub {
 const metadataFolder = ".rss-dashboard-data";
 const storageFolder = `${metadataFolder}/feeds`;
 const userStatePath = `${metadataFolder}/user-state.json`;
+/** The file this device writes; the shared file above is only read. */
+const ownStatePath = `${metadataFolder}/user-state.desktop-test.json`;
 
 function manifest(): PluginManifest {
   return {
@@ -64,6 +66,7 @@ describe("importing a preferences file that carries feeds (issue #374)", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     app = App.createMock();
+    app.saveLocalStorage("rss-reader-device-id", "desktop-test");
 
     // A Shard storage v2 vault with two feeds, each with a starred article.
     await app.vault.adapter.mkdir(storageFolder);
@@ -142,7 +145,7 @@ describe("importing a preferences file that carries feeds (issue #374)", () => {
     expect(plugin.settings.feeds.map((feed) => feed.feedId)).toEqual([
       "feed-kept",
     ]);
-    const written = JSON.parse(await adapter().read(userStatePath)) as {
+    const written = JSON.parse(await adapter().read(ownStatePath)) as {
       states: Record<string, { starred?: boolean }>;
     };
     expect(written.states["feed-left-out:feed-left-out-guid"]?.starred).toBe(
@@ -211,7 +214,7 @@ describe("importing a preferences file that carries feeds (issue #374)", () => {
       ]),
     );
     await vi.waitFor(async () => {
-      const written = JSON.parse(await adapter().read(userStatePath)) as {
+      const written = JSON.parse(await adapter().read(ownStatePath)) as {
         unrecognizedFeedSinceByFeedId?: Record<string, number>;
       };
       expect(written.unrecognizedFeedSinceByFeedId?.["feed-left-out"]).toEqual(
@@ -219,7 +222,7 @@ describe("importing a preferences file that carries feeds (issue #374)", () => {
       );
     });
 
-    const written = JSON.parse(await adapter().read(userStatePath)) as {
+    const written = JSON.parse(await adapter().read(ownStatePath)) as {
       states: Record<string, { starred?: boolean }>;
     };
     expect(written.states["feed-left-out:feed-left-out-guid"]?.starred).toBe(
@@ -230,7 +233,7 @@ describe("importing a preferences file that carries feeds (issue #374)", () => {
   it("changes nothing when the user cancels the import confirmation (issue #377)", async () => {
     installObsidianDomPolyfills();
     const noticeSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
-    const userStateBefore = await adapter().read(userStatePath);
+    const userStateBefore = await adapter().read(ownStatePath);
     const file = new File(
       [JSON.stringify({ feeds: [persistedFeed("feed-kept")] })],
       "rss-dashboard-user-preferences.json",
@@ -245,7 +248,7 @@ describe("importing a preferences file that carries feeds (issue #374)", () => {
       "feed-left-out",
     ]);
     expect(plugin.saveData).not.toHaveBeenCalled();
-    expect(await adapter().read(userStatePath)).toBe(userStateBefore);
+    expect(await adapter().read(ownStatePath)).toBe(userStateBefore);
     expect(noticeSpy).toHaveBeenCalledWith(
       "[Stub Notice]",
       "Import canceled. Nothing was changed.",
