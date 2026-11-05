@@ -27,6 +27,9 @@ function input(
       unreadItemCount: 0,
       unreadButReadOnDisk: 0,
       unreadWithNoEntryOnDisk: 0,
+      unreadAndUnreadOnDisk: 0,
+      unreadFoundUnderOtherFeedId: 0,
+      samplesWithNoEntry: [],
       ...userState,
     },
     ...overrides,
@@ -50,6 +53,24 @@ describe("formatSyncCheckReport()", () => {
     expect(
       formatSyncCheckReport(input({ status: "missing", modifiedAt: null })),
     ).toContain('"Sync all other types"');
+  });
+
+  it("flags articles the file holds under another feed ID", () => {
+    const report = formatSyncCheckReport(
+      input({
+        unreadWithNoEntryOnDisk: 300,
+        unreadFoundUnderOtherFeedId: 280,
+        samplesWithNoEntry: ["r/WearOS | feed-1:t3_abc"],
+      }),
+    );
+    expect(report).toContain("280 unread articles are in the file under a different feed ID");
+    expect(report).toContain("  r/WearOS | feed-1:t3_abc");
+  });
+
+  it("flags articles the file records as unread", () => {
+    expect(
+      formatSyncCheckReport(input({ unreadAndUnreadOnDisk: 40 })),
+    ).toContain("40 unread articles are also unread in the file");
   });
 
   it("flags feeds with different IDs on the two devices", () => {

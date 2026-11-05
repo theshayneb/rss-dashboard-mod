@@ -183,6 +183,15 @@ export interface UserStateDiskReport {
   unreadButReadOnDisk: number;
   /** Unread here with no entry on disk at all. */
   unreadWithNoEntryOnDisk: number;
+  /** Unread here, with an entry on disk that also says unread. */
+  unreadAndUnreadOnDisk: number;
+  /**
+   * Unread here with no entry under this feed, but an entry for the same
+   * article under another feed id: the devices disagree on feed ids.
+   */
+  unreadFoundUnderOtherFeedId: number;
+  /** A few unread articles with no entry, as "feed title | key". */
+  samplesWithNoEntry: string[];
 }
 
 export function normalizeFolderPath(path: string): string {
@@ -1765,6 +1774,9 @@ export class FeedStorageRepository {
       unreadItemCount: 0,
       unreadButReadOnDisk: 0,
       unreadWithNoEntryOnDisk: 0,
+      unreadAndUnreadOnDisk: 0,
+      unreadFoundUnderOtherFeedId: 0,
+      samplesWithNoEntry: [],
     };
 
     let file: UserStateFile | null = null;
@@ -1788,10 +1800,14 @@ export class FeedStorageRepository {
 
     const { states } = this.resolvePersistedUserState(file, settings);
     const feedIds = new Set(settings.feeds.map((feed) => feed.feedId ?? ""));
+    const feedIdsByGuid = new Map<string, string[]>();
     for (const [key, state] of Object.entries(states)) {
       report.entryCount++;
       if (state.read) report.readEntryCount++;
-      if (!feedIds.has(feedIdOfStateKey(key))) report.entriesForUnknownFeeds++;
+      const feedId = feedIdOfStateKey(key);
+      if (!feedIds.has(feedId)) report.entriesForUnknownFeeds++;
+      const guid = key.slice(feedId.length + 1);
+      feedIdsByGuid.set(guid, [...(feedIdsByGuid.get(guid) ?? []), feedId]);
     }
 
     for (const feed of settings.feeds) {
@@ -1799,11 +1815,20 @@ export class FeedStorageRepository {
         report.loadedItemCount++;
         if (item.read) continue;
         report.unreadItemCount++;
-        const state = states[userStateKey(feed.feedId ?? "", item.guid)];
+        const key = userStateKey(feed.feedId ?? "", item.guid);
+        const state = states[key];
         if (!state) {
           report.unreadWithNoEntryOnDisk++;
+          if ((feedIdsByGuid.get(item.guid) ?? []).length > 0) {
+            report.unreadFoundUnderOtherFeedId++;
+          }
+          if (report.samplesWithNoEntry.length < 5) {
+            report.samplesWithNoEntry.push(`${feed.title} | ${key}`);
+          }
         } else if (state.read) {
           report.unreadButReadOnDisk++;
+        } else {
+          report.unreadAndUnreadOnDisk++;
         }
       }
     }
