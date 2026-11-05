@@ -40,6 +40,14 @@ export function formatSyncCheckReport(input: SyncCheckInput): string {
     `Articles on this device: ${state.loadedItemCount} (${state.unreadItemCount} unread)`,
     `Unread here but read in the file: ${state.unreadButReadOnDisk}`,
     `Unread here with no entry in the file: ${state.unreadWithNoEntryOnDisk}`,
+    `  ...of which the file has under another feed ID: ${state.unreadFoundUnderOtherFeedId}`,
+    `Unread here and unread in the file: ${state.unreadAndUnreadOnDisk}`,
+    ...(state.samplesWithNoEntry.length > 0
+      ? [
+          "Examples with no entry (feed | key):",
+          ...state.samplesWithNoEntry.map((sample) => `  ${sample}`),
+        ]
+      : []),
     "",
     "What this suggests:",
     ...suggestions(input),
@@ -71,7 +79,14 @@ function suggestions(input: SyncCheckInput): string[] {
       `- ${state.unreadButReadOnDisk} articles are read in the file but not on screen. Tap "Reload from disk".`,
     );
   }
-  if (state.entriesForUnknownFeeds > 0 && state.unreadWithNoEntryOnDisk > 0) {
+  if (state.unreadFoundUnderOtherFeedId > 0) {
+    found.push(
+      `- ${state.unreadFoundUnderOtherFeedId} unread articles are in the file under a different feed ID, so the devices give the same feeds different IDs.`,
+    );
+  } else if (
+    state.entriesForUnknownFeeds > 0 &&
+    state.unreadWithNoEntryOnDisk > 0
+  ) {
     found.push(
       "- The file has entries for feeds this device doesn't know, so the devices may give the same feeds different IDs. Compare this report from both devices.",
     );
@@ -83,6 +98,11 @@ function suggestions(input: SyncCheckInput): string[] {
   ) {
     found.push(
       `- ${state.unreadWithNoEntryOnDisk} unread articles aren't in the file at all: the other device either never had them or its changes haven't arrived. Check "Sync all other types" is on for both devices, and compare "File last changed" on both.`,
+    );
+  }
+  if (state.unreadAndUnreadOnDisk > 0) {
+    found.push(
+      `- ${state.unreadAndUnreadOnDisk} unread articles are also unread in the file. If you marked them read, a save from a device that still had them unread replaced that.`,
     );
   }
   if (found.length === 0) {

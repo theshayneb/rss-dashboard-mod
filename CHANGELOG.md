@@ -1,3 +1,9 @@
+## 2.7.13 - November 5, 2026 (RSS Reader)
+
+### Changes
+
+- **Sync check** now also reports unread articles the synced file records as unread, unread articles the file holds under a different feed ID, and up to five example unread articles with the exact key it looked up, to pin down why marked-read articles come back.
+
 ## 2.7.12 - November 3, 2026 (RSS Reader)
 
 ### Features

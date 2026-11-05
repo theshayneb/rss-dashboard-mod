@@ -2976,7 +2976,7 @@ describe("describeUserStateOnDisk()", () => {
     return { app, repository, settings };
   }
 
-  it("counts unread articles the file says are read, and ones it has no entry for", async () => {
+  it("counts read-on-disk, unread-on-disk, missing, and other-feed-ID entries for unread articles", async () => {
     const { app, repository, settings } = await setUp();
     await vaultAdapter(app).write(
       path,
@@ -2984,7 +2984,8 @@ describe("describeUserStateOnDisk()", () => {
         version: 3,
         states: {
           "feed-1:a": { read: true },
-          "other-feed:x": { read: true },
+          "feed-1:b": { read: false },
+          "other-feed:c": { read: true },
         },
       }),
     );
@@ -2994,13 +2995,16 @@ describe("describeUserStateOnDisk()", () => {
     expect(report).toMatchObject({
       path,
       status: "ok",
-      entryCount: 2,
+      entryCount: 3,
       readEntryCount: 2,
       entriesForUnknownFeeds: 1,
       loadedItemCount: 3,
       unreadItemCount: 3,
       unreadButReadOnDisk: 1,
-      unreadWithNoEntryOnDisk: 2,
+      unreadAndUnreadOnDisk: 1,
+      unreadWithNoEntryOnDisk: 1,
+      unreadFoundUnderOtherFeedId: 1,
+      samplesWithNoEntry: ["Example Feed | feed-1:c"],
     });
   });
 
