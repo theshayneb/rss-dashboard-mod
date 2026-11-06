@@ -30,6 +30,8 @@ function input(
       unreadAndUnreadOnDisk: 0,
       unreadFoundUnderOtherFeedId: 0,
       samplesWithNoEntry: [],
+      sourceFiles: [],
+      readThroughFeedCount: 0,
       ...userState,
     },
     ...overrides,
@@ -37,6 +39,20 @@ function input(
 }
 
 describe("formatSyncCheckReport()", () => {
+  it("lists each device's file it read", () => {
+    const report = formatSyncCheckReport(
+      input({
+        sourceFiles: [
+          { path: "Utilities/RSS Reader/user-state.json", modifiedAt: 0, entryCount: 5000, isOwn: false },
+          { path: "Utilities/RSS Reader/user-state.desktop-a.json", modifiedAt: 0, entryCount: 5500, isOwn: true },
+          { path: "Utilities/RSS Reader/user-state.mobile-b.json", modifiedAt: 0, entryCount: 0, isOwn: false, unreadable: true },
+        ],
+      }),
+    );
+    expect(report).toContain("  user-state.desktop-a.json (this device): 5500 entries");
+    expect(report).toContain("  user-state.mobile-b.json: UNREADABLE, skipped");
+  });
+
   it("says read state matches when nothing is off", () => {
     expect(formatSyncCheckReport(input())).toContain(
       "Read state on this device matches the file.",

@@ -1,3 +1,10 @@
+## 2.7.15 - November 6, 2026 (RSS Reader)
+
+### Fixes
+
+- Articles that only one device has now get marked read when you read everything on another device. Each device fetches feeds on its own schedule, so a desktop can hold hundreds of articles a phone never downloaded, and per-article read marks can't reach those. When a device has every article in a feed read, it records that feed as read through the date of its newest article. Other devices treat unread articles in that feed dated on or before that point as read, unless they were marked unread after the mark was made. Newer articles stay unread.
+- **Sync check** lists each article state file it read, by device, with its entry count and when it last changed, and how many feeds a device has read through.
+
 ## 2.7.14 - November 5, 2026 (RSS Reader)
 
 ### Fixes
