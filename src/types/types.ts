@@ -491,8 +491,21 @@ export interface UserStateFile {
    * the saving device's feed list and was not removed by that device.
    */
   unrecognizedFeedSinceByFeedId?: Record<string, number>;
+  /**
+   * Per feed, how far a device has read everything it had. Devices fetch on
+   * their own schedules and hold different articles, so read marks alone
+   * cannot cover an article only one device has. An unread article dated at
+   * or before `through`, not marked unread since `recordedAt`, counts as read.
+   */
+  readThroughByFeedId?: Record<string, ReadThroughMark>;
   _syncNonce?: string;
   _syncPad?: string;
+}
+
+/** A feed's read-through point, and when a device recorded it. */
+export interface ReadThroughMark {
+  through: number;
+  recordedAt: number;
 }
 
 export interface FeedItemsShard {

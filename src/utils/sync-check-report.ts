@@ -34,7 +34,21 @@ export function formatSyncCheckReport(input: SyncCheckInput): string {
     `File last changed: ${
       state.modifiedAt ? new Date(state.modifiedAt).toLocaleString() : "n/a"
     }`,
+    ...(state.sourceFiles.length > 0
+      ? [
+          "Files read:",
+          ...state.sourceFiles.map(
+            (file) =>
+              `  ${file.path.split("/").pop() ?? file.path}${file.isOwn ? " (this device)" : ""}: ${
+                file.unreadable
+                  ? "UNREADABLE, skipped"
+                  : `${file.entryCount} entries, changed ${new Date(file.modifiedAt).toLocaleString()}`
+              }`,
+          ),
+        ]
+      : []),
     `Entries in file: ${state.entryCount} (${state.readEntryCount} marked read)`,
+    `Feeds read through by a device: ${state.readThroughFeedCount}`,
     `Entries for feeds this device doesn't have: ${state.entriesForUnknownFeeds}`,
     `Feeds: ${input.feedCount} (${input.unloadedFeedCount} with no articles loaded)`,
     `Articles on this device: ${state.loadedItemCount} (${state.unreadItemCount} unread)`,

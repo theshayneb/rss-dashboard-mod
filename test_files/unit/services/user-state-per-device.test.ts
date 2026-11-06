@@ -224,6 +224,97 @@ describe("article state with a file per device", () => {
   });
 });
 
+describe("read-through marks for articles only one device has", () => {
+  function feedWith(items: FeedItem[]) {
+    return [
+      {
+        title: "Feed",
+        url: "https://example.com/feed.xml",
+        folder: "",
+        feedId: "feed-1",
+        items,
+        lastUpdated: 0,
+      } as Feed,
+    ];
+  }
+
+  function dated(guid: string, day: string): FeedItem {
+    return { ...item(guid), pubDate: `2026-10-${day}T00:00:00Z` };
+  }
+
+  it("marks read an old article only the desktop has, once the phone reads everything it has", async () => {
+    const phone = device(app, "mobile-1");
+    phone.settings.feeds = feedWith([dated("new", "20"), dated("mid", "10")]);
+    await phone.repository.hydrateSettings(phone.settings);
+    vi.setSystemTime(new Date("2026-11-05T09:01:00Z"));
+    for (const entry of phone.settings.feeds[0].items) entry.read = true;
+    await phone.repository.saveUserStateFromFeeds(phone.settings);
+
+    // The desktop also holds an older post the phone never fetched, and a
+    // newer one the phone hasn't fetched yet.
+    const desktop = device(app, "desktop-1");
+    desktop.settings.feeds = feedWith([
+      dated("new", "20"),
+      dated("mid", "10"),
+      dated("old", "01"),
+      dated("newer", "25"),
+    ]);
+    await desktop.repository.hydrateSettings(desktop.settings);
+
+    expect(desktop.article("old").read).toBe(true);
+    expect(desktop.article("mid").read).toBe(true);
+    expect(desktop.article("newer").read).toBe(false);
+
+    // The next save records it, so it reaches the desktop's own file too.
+    await desktop.repository.saveUserStateFromFeeds(desktop.settings);
+    expect(
+      (await readJson(app, `${FOLDER}/user-state.desktop-1.json`)).states["feed-1:old"],
+    ).toMatchObject({ read: true });
+  });
+
+  it("leaves an article marked unread after the mark unread", async () => {
+    const phone = device(app, "mobile-1");
+    phone.settings.feeds = feedWith([dated("a", "20")]);
+    await phone.repository.hydrateSettings(phone.settings);
+    vi.setSystemTime(new Date("2026-11-05T09:01:00Z"));
+    phone.settings.feeds[0].items[0].read = true;
+    await phone.repository.saveUserStateFromFeeds(phone.settings);
+
+    const desktop = device(app, "desktop-1");
+    desktop.settings.feeds = feedWith([dated("a", "20"), dated("b", "05")]);
+    await desktop.repository.hydrateSettings(desktop.settings);
+    expect(desktop.article("b").read).toBe(true);
+
+    // Later, on the desktop, the user marks b unread to come back to it.
+    vi.setSystemTime(new Date("2026-11-05T10:00:00Z"));
+    await desktop.repository.saveUserStateFromFeeds(desktop.settings);
+    desktop.article("b").read = false;
+    await desktop.repository.saveUserStateFromFeeds(desktop.settings);
+
+    const reloaded = device(app, "desktop-1");
+    reloaded.settings.feeds = feedWith([dated("a", "20"), dated("b", "05")]);
+    await reloaded.repository.hydrateSettings(reloaded.settings);
+    expect(reloaded.article("b").read).toBe(false);
+  });
+
+  it("keeps the furthest read-through point across devices", () => {
+    const merged = mergeUserStateSources([
+      {
+        file: { version: 3, states: {}, readThroughByFeedId: { f: { through: 10, recordedAt: 50 } } },
+        modifiedAt: 0,
+        isOwn: false,
+      },
+      {
+        file: { version: 3, states: {}, readThroughByFeedId: { f: { through: 20, recordedAt: 40 } } },
+        modifiedAt: 0,
+        isOwn: true,
+      },
+    ]);
+
+    expect(merged.readThroughByFeedId?.f).toEqual({ through: 20, recordedAt: 40 });
+  });
+});
+
 describe("mergeUserStateSources()", () => {
   it("keeps each article's newest entry, dating entries without one by their file", () => {
     const merged = mergeUserStateSources([

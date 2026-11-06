@@ -11,12 +11,14 @@ import type {
   SettingsBundle,
   ArticleUserState,
   ArticleUserStateField,
+  ReadThroughMark,
   Tag,
   UserStateFile,
   FeedShardHealth,
 } from "../types/types";
 import { trimSurroundingSlashes } from "../utils/folder-paths";
 import { settingsFingerprint } from "../utils/settings-fingerprint";
+import { getEffectiveDateMs } from "./feed-parser/feed-retention";
 
 const SHARD_VERSION = 1;
 
@@ -173,6 +175,40 @@ function mergeLocalUserStateChange(
   return userStateFromFieldValues(values, changedAt);
 }
 
+/**
+ * Whether a feed's read-through mark makes this unread article read: it is
+ * dated at or before the mark, and its read flag was not changed after the
+ * mark was recorded (an article marked unread since stays unread).
+ */
+function isCoveredByReadThrough(
+  item: FeedItem,
+  mark: ReadThroughMark | undefined,
+  entry: ArticleUserState | undefined,
+  useFirstSeenDateFallback: boolean,
+): boolean {
+  if (item.read || !mark) return false;
+  const dateMs = getEffectiveDateMs(item, useFirstSeenDateFallback);
+  if (dateMs <= 0 || dateMs > mark.through) return false;
+  return (entry ? fieldChangedAt(entry, "read", 0) : 0) < mark.recordedAt;
+}
+
+/** Keeps the furthest read-through point for each feed. */
+function mergeReadThroughMarks(
+  target: Record<string, ReadThroughMark>,
+  marks: Record<string, ReadThroughMark> | undefined,
+): void {
+  for (const [feedId, mark] of Object.entries(marks ?? {})) {
+    const current = target[feedId];
+    if (
+      !current ||
+      mark.through > current.through ||
+      (mark.through === current.through && mark.recordedAt > current.recordedAt)
+    ) {
+      target[feedId] = { through: mark.through, recordedAt: mark.recordedAt };
+    }
+  }
+}
+
 /** `user-state.json`, or one device's `user-state.<deviceId>.json`. */
 const USER_STATE_FILE_NAME = /^user-state(\.[A-Za-z0-9_-]+)?\.json$/;
 
@@ -198,8 +234,10 @@ export function mergeUserStateSources(sources: UserStateSource[]): UserStateFile
     { values: unknown[]; changedAt: Partial<Record<ArticleUserStateField, number>> }
   >();
   const legacy: Record<string, ArticleUserState> = {};
+  const readThrough: Record<string, ReadThroughMark> = {};
 
   for (const { file, modifiedAt } of ordered) {
+    mergeReadThroughMarks(readThrough, file.readThroughByFeedId);
     const isMigrated = file.version >= USER_STATE_QUALIFIED_VERSION;
     Object.assign(
       legacy,
@@ -233,6 +271,9 @@ export function mergeUserStateSources(sources: UserStateSource[]): UserStateFile
     version: USER_STATE_KEY_VERSION,
     states,
     ...(Object.keys(legacy).length > 0 ? { unattributedLegacyStates: legacy } : {}),
+    ...(Object.keys(readThrough).length > 0
+      ? { readThroughByFeedId: readThrough }
+      : {}),
     ...(bookkeeping?.missingSinceByStateKey
       ? { missingSinceByStateKey: cloneJson(bookkeeping.missingSinceByStateKey) }
       : {}),
@@ -368,6 +409,19 @@ export interface UserStateDiskReport {
   unreadFoundUnderOtherFeedId: number;
   /** A few unread articles with no entry, as "feed title | key". */
   samplesWithNoEntry: string[];
+  /** Each article state file read, with per-device files. */
+  sourceFiles: UserStateSourceFile[];
+  /** Feeds with a read-through mark from any device. */
+  readThroughFeedCount: number;
+}
+
+/** One article state file the sync check read. */
+export interface UserStateSourceFile {
+  path: string;
+  modifiedAt: number;
+  entryCount: number;
+  isOwn: boolean;
+  unreadable?: boolean;
 }
 
 export function normalizeFolderPath(path: string): string {
@@ -890,6 +944,19 @@ export class FeedStorageRepository {
             userStateKey(feedId, item.guid),
             userStateSignature(state),
           );
+          // Shown read at once; the next save records it as a change made
+          // here, so it reaches this device's file too.
+          if (
+            this.deviceId &&
+            isCoveredByReadThrough(
+              item,
+              userState?.readThroughByFeedId?.[feedId],
+              state,
+              settings.useFirstSeenDateFallback,
+            )
+          ) {
+            item.read = true;
+          }
         }
       }
     }
@@ -1948,6 +2015,7 @@ export class FeedStorageRepository {
         ownFile?: UserStateFile | null;
         latestModifiedAt?: number | null;
         sourceCount?: number;
+        sourceFiles?: UserStateSourceFile[];
       }
   > {
     if (this.deviceId) {
@@ -1989,9 +2057,11 @@ export class FeedStorageRepository {
         ownFile: UserStateFile | null;
         latestModifiedAt: number | null;
         sourceCount: number;
+        sourceFiles: UserStateSourceFile[];
       }
   > {
     const ownPath = this.getOwnUserStatePath(settings);
+    const sourceFiles: UserStateSourceFile[] = [];
     const sources: UserStateSource[] = [];
     let ownFile: UserStateFile | null = null;
     let latestModifiedAt: number | null = null;
@@ -2012,12 +2082,19 @@ export class FeedStorageRepository {
         }
         if (path === ownPath) ownFile = parsed;
         sources.push({ file: parsed, modifiedAt, isOwn: path === ownPath });
+        sourceFiles.push({
+          path,
+          modifiedAt,
+          entryCount: Object.keys(parsed.states).length,
+          isOwn: path === ownPath,
+        });
       } catch (e) {
         if (path === ownPath) {
           storageError("Failed to parse this device's user-state file", e);
           return { status: "unreadable" };
         }
         storageError("Skipped another device's unreadable user-state file", e);
+        sourceFiles.push({ path, modifiedAt: 0, entryCount: 0, isOwn: false, unreadable: true });
       }
     }
 
@@ -2028,6 +2105,7 @@ export class FeedStorageRepository {
       ownFile,
       latestModifiedAt,
       sourceCount: sources.length,
+      sourceFiles,
     };
   }
 
@@ -2096,6 +2174,8 @@ export class FeedStorageRepository {
       unreadAndUnreadOnDisk: 0,
       unreadFoundUnderOtherFeedId: 0,
       samplesWithNoEntry: [],
+      sourceFiles: [],
+      readThroughFeedCount: 0,
     };
 
     // Read without recording the files as seen, so the watcher still
@@ -2109,6 +2189,10 @@ export class FeedStorageRepository {
         result.latestModifiedAt ??
         (await this.app.vault.adapter.stat(path))?.mtime ??
         null;
+      report.sourceFiles = result.sourceFiles ?? [];
+      report.readThroughFeedCount = Object.keys(
+        result.file.readThroughByFeedId ?? {},
+      ).length;
       if (result.sourceCount !== undefined) {
         report.path = `${this.getOwnUserStatePath(settings)} (merged from ${result.sourceCount} device file${result.sourceCount === 1 ? "" : "s"})`;
       }
@@ -2250,14 +2334,37 @@ export class FeedStorageRepository {
         : {};
     const now = Date.now();
 
+    const readThrough: Record<string, ReadThroughMark> =
+      this.deviceId && existing.status === "ok"
+        ? cloneJson(existing.file.readThroughByFeedId ?? {})
+        : {};
     const currentFeedIds = new Set<string>();
     for (const feed of settings.feeds) {
       const feedId = feed.feedId ?? "";
       currentFeedIds.add(feedId);
+      // Another device having read everything through this point covers
+      // unread articles only this device has; see isCoveredByReadThrough.
+      const applyReadThrough = (
+        item: FeedItem,
+        entry: ArticleUserState | undefined,
+      ) => {
+        if (
+          this.deviceId &&
+          isCoveredByReadThrough(
+            item,
+            readThrough[feedId],
+            entry,
+            settings.useFirstSeenDateFallback,
+          )
+        ) {
+          item.read = true;
+        }
+      };
 
       for (const item of feed.items) {
         const key = userStateKey(feedId, item.guid);
         const baseline = states[key];
+        applyReadThrough(item, baseline);
 
         // An item this session has never synced with persisted state (it
         // arrived via a refresh after its feed missed the one
@@ -2271,6 +2378,7 @@ export class FeedStorageRepository {
           this.knownUserStateByKey.set(key, userStateSignature(baseline));
           if (baseline) {
             applyUserStateToItem(item, baseline);
+            applyReadThrough(item, baseline);
             continue;
           }
         } else if (
@@ -2285,6 +2393,7 @@ export class FeedStorageRepository {
           // entry, and the whole file may simply not have arrived yet.
           this.knownUserStateByKey.set(key, userStateSignature(baseline));
           applyUserStateToItem(item, baseline);
+          applyReadThrough(item, baseline);
           continue;
         }
 
@@ -2305,6 +2414,21 @@ export class FeedStorageRepository {
         if (this.deviceId) applyUserStateToItem(item, state);
         states[key] = state;
         this.knownUserStateByKey.set(key, userStateSignature(state));
+      }
+
+      // Everything this device has in the feed is read: record how far, so
+      // devices holding articles this one never fetched mark those read too.
+      if (this.deviceId && feed.items.length > 0 && feed.items.every((item) => item.read)) {
+        const through = Math.max(
+          0,
+          ...feed.items.map((item) =>
+            getEffectiveDateMs(item, settings.useFirstSeenDateFallback),
+          ),
+        );
+        const current = readThrough[feedId];
+        if (through > 0 && (!current || through > current.through)) {
+          readThrough[feedId] = { through, recordedAt: now };
+        }
       }
     }
 
@@ -2451,6 +2575,9 @@ export class FeedStorageRepository {
         : {}),
       ...(Object.keys(unrecognizedFeedSinceByFeedId).length > 0
         ? { unrecognizedFeedSinceByFeedId }
+        : {}),
+      ...(Object.keys(readThrough).length > 0
+        ? { readThroughByFeedId: readThrough }
         : {}),
     };
 
