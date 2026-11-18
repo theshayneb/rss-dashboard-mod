@@ -355,6 +355,9 @@ export default class RssDashboardPlugin extends Plugin {
   private refreshStatusRenderTimeoutId: number | null = null;
   private autoRefreshScheduler: FeedRefreshScheduler | null = null;
   private suppressWatcherUntil = 0;
+  /** Names this device's own settings and article state files. */
+  public readonly deviceId: string;
+  private hasShownLocalRefreshNotice = false;
   /** This device's shared settings file, and every other device's. */
   private sharedSettingsStore: SharedSettingsStore;
   /** Shared settings as this device last read or wrote them: the merge base. */
@@ -391,6 +394,7 @@ export default class RssDashboardPlugin extends Plugin {
       },
     });
     const deviceId = getOrCreateDeviceId(app, Platform.isMobile);
+    this.deviceId = deviceId;
     this.sharedSettingsStore = new SharedSettingsStore(app, deviceId, (fn) =>
       this.writeWithWatcherSuppressed(fn),
     );
@@ -1827,6 +1831,13 @@ export default class RssDashboardPlugin extends Plugin {
       const candidateFeeds = selectedFeeds || this.settings.feeds;
       if (candidateFeeds.length === 0) {
         return;
+      }
+      if (!this.isBackgroundTasksEnabled() && !this.hasShownLocalRefreshNotice) {
+        // Only the hub's articles sync; say so once, so it isn't a surprise.
+        this.hasShownLocalRefreshNotice = true;
+        new Notice(
+          "Refreshing on this device only. The device running background tasks shares new articles with this one.",
+        );
       }
 
       const feedsToRefresh = this.getRefreshableFeeds(candidateFeeds);

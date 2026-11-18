@@ -21,7 +21,11 @@ export type SimpleSettingsPlugin = Pick<
   "settings" | "saveSettings"
 > &
   Pick<ArticleSavingPluginLike, "settings"> &
-  StorageSettingsPluginLike;
+  StorageSettingsPluginLike & {
+    deviceId: string;
+    isBackgroundTasksEnabled(): boolean;
+    setBackgroundTasksEnabled(enabled: boolean): void;
+  };
 
 export function renderSimpleSettings(
   containerEl: HTMLElement,
@@ -43,6 +47,17 @@ export function renderSimpleSettings(
     );
 
   renderRefreshIntervalSetting(containerEl, plugin);
+
+  new Setting(containerEl)
+    .setName("Run background tasks on this device")
+    .setDesc(
+      `Automatic refreshes, fetching, and automatic fixes run only on devices with this on, after Obsidian Sync has caught up. Turn it on for one always-on device; other devices refresh only when you ask, and get new articles through Sync. This device: ${plugin.deviceId}`,
+    )
+    .addToggle((toggle) =>
+      toggle
+        .setValue(plugin.isBackgroundTasksEnabled())
+        .onChange((value) => plugin.setBackgroundTasksEnabled(value)),
+    );
   renderTaskNoteSetting(containerEl, plugin);
   renderDataFolderSetting(containerEl, plugin);
 

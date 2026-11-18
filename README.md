@@ -90,7 +90,9 @@ Feeds, settings, and read, starred, and tag state sync across devices once both 
 1. On **every** device, open **Settings → Sync** and turn on **Sync all other types**, **Active community plugin list**, and **Installed community plugin list**.
 2. In **Settings → RSS Reader**, **Data folder** says feeds and article state are stored in `Utilities/RSS Reader`. If it doesn't, click **Move to Utilities/RSS Reader** on the device that has your data, and wait for Sync to finish before opening the plugin on other devices.
 
-Each device keeps its read, starred, and tag changes in its own `user-state.<device>.json` in that folder, and the plugin combines them, so changes made on different devices don't overwrite each other. Keep every device on the same version.
+Each device keeps its read, starred, and tag changes in its own `user-state.<device>.json`, and its shared settings in its own `settings.<device>.json`, in that folder. The plugin merges them by when each change was made, so a phone or tablet that syncs hours or days late can't undo what you did elsewhere. Keep every device on the same version.
+
+Turn on **Run background tasks on this device** (settings page) for one always-on device, such as your desktop. It's the only device that refreshes on its own and writes the shared feed files, once Sync has caught up. Phones and tablets have it off by default: they refresh only when you ask and get new articles from that device through Sync.
 
 On a new device, let Sync report **Fully synced** before enabling the plugin, as described in [Syncing across devices](docs/syncing.md).
 

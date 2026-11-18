@@ -22,6 +22,18 @@ this plan unimplemented.
 Distinct from [#278](https://github.com/amatya-aditya/obsidian-rss-dashboard/issues/278),
 which fixes outright correctness bugs and is **not** conditional.
 
+## Status in the RSS Reader fork (2.7.16)
+
+- **Item 1 (merge-on-write for `user-state.json`)**: done differently. Each
+  device writes its own `user-state.<device>.json`, merged field by field by
+  edit time (2.7.14), with untimed entries dated 0 (2.7.16).
+- **Item 2 (refresh write-path isolation)**: done as a hub model. Only the
+  device running background tasks refreshes automatically and writes the
+  synced shards. Other devices refresh only by hand and keep those results in
+  memory, never writing shards. Refresh bookkeeping is per device and never
+  synced, and the per-save sync nonce and padding are gone.
+- **Item 3 (orphan shard reconcile)**: not done.
+
 ## Problem
 
 v2's cross-device failure is structural: every device rewrites shared files

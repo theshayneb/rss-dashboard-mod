@@ -238,7 +238,7 @@ export function mergeUserStateSources(sources: UserStateSource[]): UserStateFile
   const legacy: Record<string, ArticleUserState> = {};
   const readThrough: Record<string, ReadThroughMark> = {};
 
-  for (const { file, modifiedAt } of ordered) {
+  for (const { file } of ordered) {
     mergeReadThroughMarks(readThrough, file.readThroughByFeedId);
     const isMigrated = file.version >= USER_STATE_QUALIFIED_VERSION;
     Object.assign(
