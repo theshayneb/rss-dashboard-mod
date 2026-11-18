@@ -453,3 +453,36 @@ describe("a tablet that syncs three days late", () => {
     expect(file.readThroughByFeedId?.["feed-1"]?.recordedAt).toBe(D(0.5));
   });
 });
+
+describe("several devices open at once", () => {
+  it("writes only on the device that changed something, so they don't keep resyncing", async () => {
+    const desktop = device(app, "desktop-1");
+    const phone = device(app, "mobile-1");
+    const tablet = device(app, "mobile-2");
+    for (const each of [desktop, phone, tablet]) {
+      await each.repository.hydrateSettings(each.settings);
+    }
+
+    vi.setSystemTime(new Date("2026-11-05T09:01:00Z"));
+    phone.article("a").read = true;
+    await phone.repository.saveUserStateFromFeeds(phone.settings);
+
+    const writes = vi.spyOn(app.vault.adapter, "write");
+    // Every device reloads the files that changed, then saves (a refresh, a
+    // click), round after round, as when they are all open.
+    for (let round = 0; round < 3; round++) {
+      vi.setSystemTime(new Date(Date.parse("2026-11-05T09:02:00Z") + round * 60_000));
+      for (const each of [desktop, phone, tablet]) {
+        await each.repository.hydrateSettings(each.settings);
+        await each.repository.saveUserStateFromFeeds(each.settings);
+      }
+    }
+
+    const stateWrites = writes.mock.calls.filter(([path]) =>
+      String(path).includes("user-state"),
+    );
+    expect(stateWrites).toEqual([]);
+    expect(desktop.article("a").read).toBe(true);
+    expect(tablet.article("a").read).toBe(true);
+  });
+});

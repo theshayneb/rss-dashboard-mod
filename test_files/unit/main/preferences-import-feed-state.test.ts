@@ -233,7 +233,10 @@ describe("importing a preferences file that carries feeds (issue #374)", () => {
   it("changes nothing when the user cancels the import confirmation (issue #377)", async () => {
     installObsidianDomPolyfills();
     const noticeSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
-    const userStateBefore = await adapter().read(ownStatePath);
+    // No read-state file changes: the shared one stays as it was, and this
+    // device, with no edit of its own, writes none.
+    const userStateBefore = await adapter().read(userStatePath);
+    const ownFileBefore = await app.vault.adapter.exists(ownStatePath);
     const file = new File(
       [JSON.stringify({ feeds: [persistedFeed("feed-kept")] })],
       "rss-dashboard-user-preferences.json",
@@ -248,7 +251,8 @@ describe("importing a preferences file that carries feeds (issue #374)", () => {
       "feed-left-out",
     ]);
     expect(plugin.saveData).not.toHaveBeenCalled();
-    expect(await adapter().read(ownStatePath)).toBe(userStateBefore);
+    expect(await adapter().read(userStatePath)).toBe(userStateBefore);
+    expect(await app.vault.adapter.exists(ownStatePath)).toBe(ownFileBefore);
     expect(noticeSpy).toHaveBeenCalledWith(
       "[Stub Notice]",
       "Import canceled. Nothing was changed.",
