@@ -95,6 +95,11 @@ export interface FeedItem {
    * with no parseable `pubDate`, when `useFirstSeenDateFallback` is enabled.
    */
   firstSeenMs?: number;
+  /**
+   * Set on this device only, never saved: the item is saved but its note is
+   * not on this device (perhaps not synced here yet).
+   */
+  savedNoteMissing?: boolean;
 }
 
 export type FeedEncoding = "auto" | "windows-1251";

@@ -3029,3 +3029,63 @@ describe("describeUserStateOnDisk()", () => {
     expect(await repository.hasUserStateChangedOnDisk(settings)).toBe(true);
   });
 });
+
+describe("feed shards written only by the device running background tasks", () => {
+  function setUp(canWrite: boolean) {
+    const app = App.createMock();
+    const repository = new FeedStorageRepository(app, {
+      canWriteFeedContent: () => canWrite,
+    });
+    const settings = cloneSettings();
+    settings.storageMode = "vault-shards-v2";
+    settings.storageFolder = "Utilities/RSS Reader/feeds";
+    settings.metadataStorageFolder = "Utilities/RSS Reader";
+    settings.feeds = [makeFeed({ feedId: "feed-1" })];
+    const saveData = vi
+      .fn<(...args: unknown[]) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    return { app, repository, settings, saveData };
+  }
+
+  it("does not write a shard on a phone or tablet after a routine save", async () => {
+    const { app, repository, settings, saveData } = setUp(false);
+
+    await repository.persistSettings(settings, saveData);
+
+    expect(
+      await app.vault.adapter.exists("Utilities/RSS Reader/feeds/feed-1.json"),
+    ).toBe(false);
+  });
+
+  it("writes shards on the hub", async () => {
+    const { app, repository, settings, saveData } = setUp(true);
+
+    await repository.persistSettings(settings, saveData);
+
+    expect(
+      await app.vault.adapter.exists("Utilities/RSS Reader/feeds/feed-1.json"),
+    ).toBe(true);
+  });
+
+  it("still writes shards for an operation the user starts, on any device", async () => {
+    const { app, repository, settings, saveData } = setUp(false);
+
+    await repository.persistSettings(settings, saveData, { forceAllShards: true });
+
+    expect(
+      await app.vault.adapter.exists("Utilities/RSS Reader/feeds/feed-1.json"),
+    ).toBe(true);
+  });
+
+  it("leaves a removed feed's shard for the hub to delete", async () => {
+    const { app, repository, settings, saveData } = setUp(false);
+    await repository.persistSettings(settings, saveData, { forceAllShards: true });
+
+    settings.feeds = [];
+    await repository.persistSettings(settings, saveData);
+
+    expect(
+      await app.vault.adapter.exists("Utilities/RSS Reader/feeds/feed-1.json"),
+    ).toBe(true);
+  });
+});

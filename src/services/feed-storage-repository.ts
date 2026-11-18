@@ -18,6 +18,8 @@ import type {
 } from "../types/types";
 import { trimSurroundingSlashes } from "../utils/folder-paths";
 import { settingsFingerprint } from "../utils/settings-fingerprint";
+import { stripDeviceState } from "../utils/device-state";
+import { BOOTSTRAP_KEYS } from "./shared-settings";
 import { getEffectiveDateMs } from "./feed-parser/feed-retention";
 
 const SHARD_VERSION = 1;
@@ -360,22 +362,6 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-let syncNonceCounter = 0;
-
-function withSyncNonce<T extends object>(
-  data: T,
-): T & { _syncNonce: string; _syncPad: string } {
-  syncNonceCounter++;
-  const paddingSize = 1024 + (syncNonceCounter % 1024);
-  return {
-    ...data,
-    _syncNonce: `${Date.now()}-${syncNonceCounter}`,
-    _syncPad: "sync-size-anchor "
-      .repeat(Math.ceil(paddingSize / 18))
-      .slice(0, paddingSize),
-  };
-}
-
 function createFeedId(): string {
   const randomUuid = window.crypto?.randomUUID?.();
   if (randomUuid) {
@@ -445,6 +431,12 @@ function getFeedShardPath(storageFolder: string, feedId: string): string {
   return normalizePath(`${normalizeFolderPath(storageFolder)}/${feedId}.json`);
 }
 
+/** Where the data folder is: the part of data.json every device keeps current. */
+function bootstrapFingerprint(settings: object): string {
+  const values = settings as Record<string, unknown>;
+  return JSON.stringify(BOOTSTRAP_KEYS.map((key) => values[key] ?? null));
+}
+
 function createFeedShard(feed: Feed, stripState = false): FeedItemsShard {
   return {
     version: SHARD_VERSION,
@@ -452,6 +444,7 @@ function createFeedShard(feed: Feed, stripState = false): FeedItemsShard {
     feedUrl: feed.url,
     updatedAt: Date.now(),
     items: cloneJson(feed.items ?? []).map(item => {
+      delete item.savedNoteMissing;
       if (stripState) {
         delete item.read;
         delete item.starred;
@@ -644,6 +637,7 @@ export function parseSettingsBundle(input: unknown): SettingsBundle {
 
 export class FeedStorageRepository {
   private lastPersistedMetadataJson: string | null = null;
+  private lastPersistedBootstrapJson: string | null = null;
   private lastPersistedShardJsonByFeedId = new Map<string, string>();
   private lastStorageFolderPath: string | null = null;
   private lastRepairResult = "Not yet run";
@@ -680,6 +674,7 @@ export class FeedStorageRepository {
   /** user-state.json as this device last read or wrote it, minus its sync stamp. */
   private lastUserStateFingerprint: string | null = null;
   private deviceId?: string;
+  private canWriteFeedContent?: () => boolean;
   /** Each article state file as this device last read it, minus its sync stamp. */
   private lastSeenUserStateByPath = new Map<string, string>();
   private userStateUnreadable = false;
@@ -700,12 +695,21 @@ export class FeedStorageRepository {
        * saved. Without it, the single shared `user-state.json` is used.
        */
       deviceId?: string;
+      /**
+       * Whether routine saves may write feed shards: only on the device
+       * running background tasks, so phones and tablets never overwrite the
+       * hub's shards with their older copies. Operations the user starts
+       * (moving storage, repair, imports) force a full rewrite and always
+       * write.
+       */
+      canWriteFeedContent?: () => boolean;
     },
   ) {
     this.app = app;
     this.writeWrapper = options?.writeWrapper;
     this.onUserStateHealthChange = options?.onUserStateHealthChange;
     this.deviceId = options?.deviceId;
+    this.canWriteFeedContent = options?.canWriteFeedContent;
   }
 
   public isUserStateUnreadable(): boolean {
@@ -984,7 +988,7 @@ export class FeedStorageRepository {
     });
 
     if (settings.storageMode !== "vault-shards" && settings.storageMode !== "vault-shards-v2") {
-      await saveData(withSyncNonce(cloneJson(settings)));
+      await saveData(cloneJson(settings));
       storageLog("Saved full settings to legacy data.json");
       this.capturePersistedState(settings);
       return {
@@ -1009,7 +1013,11 @@ export class FeedStorageRepository {
       });
     }
 
-    await this.ensureStorageFolderExists(normalizedStorageFolder);
+    const mayWriteShards =
+      forceAllShards || !this.canWriteFeedContent || this.canWriteFeedContent();
+    if (mayWriteShards) {
+      await this.ensureStorageFolderExists(normalizedStorageFolder);
+    }
 
     let shardWriteCount = 0;
     let shardDeleteCount = 0;
@@ -1021,6 +1029,9 @@ export class FeedStorageRepository {
       }
 
       currentFeedIds.add(feed.feedId);
+      if (!mayWriteShards) {
+        continue;
+      }
       // Also leaves the shard in a previous storage folder in place: it may
       // be the only copy of this feed's articles.
       if (this.hasNothingToRebuild(feed as Feed & { feedId: string })) {
@@ -1103,7 +1114,7 @@ export class FeedStorageRepository {
         normalizedStorageFolder,
         previousFeedId,
       );
-      if (await this.removeShardFile(shardPath)) {
+      if (mayWriteShards && (await this.removeShardFile(shardPath))) {
         storageLog("Deleted shard for removed feed", {
           feedId: previousFeedId,
           shardPath,
@@ -1118,12 +1129,24 @@ export class FeedStorageRepository {
 
     const persistedSettings = this.createPersistedSettings(settings);
     const metadataJson = JSON.stringify(persistedSettings, null, 2);
+    const bootstrapJson = bootstrapFingerprint(persistedSettings);
+    // With per-device settings files (Shard storage v2), shared settings
+    // sync through those; data.json then stays a copy for older versions,
+    // which only the hub keeps current. Other devices write it only when
+    // the data folder itself changes.
+    const metadataChanged = this.lastPersistedMetadataJson !== metadataJson;
+    const usesSettingsFiles =
+      Boolean(this.deviceId) && settings.storageMode === "vault-shards-v2";
     const shouldSaveMetadata =
-      options.forceMetadata || this.lastPersistedMetadataJson !== metadataJson;
+      options.forceMetadata ||
+      (usesSettingsFiles && !mayWriteShards
+        ? bootstrapJson !== this.lastPersistedBootstrapJson
+        : metadataChanged);
 
     if (shouldSaveMetadata) {
-      await saveData(withSyncNonce(persistedSettings));
+      await saveData(persistedSettings);
       this.lastPersistedMetadataJson = metadataJson;
+      this.lastPersistedBootstrapJson = bootstrapJson;
       storageLog("Saved shard metadata to data.json", {
         feedCount: persistedSettings.feeds.length,
       });
@@ -1238,7 +1261,7 @@ export class FeedStorageRepository {
     }
 
     settings.storageMode = "legacy-json";
-    await saveData(withSyncNonce(cloneJson(settings)));
+    await saveData(cloneJson(settings));
 
     this.lastRepairResult = "Reverted to legacy JSON";
     this.capturePersistedState(settings);
@@ -1677,11 +1700,20 @@ export class FeedStorageRepository {
   ): PersistedRssDashboardSettings {
     const cloned = cloneJson(settings);
 
-    return {
+    // Layout and refresh bookkeeping are per device; see device-state.ts.
+    return stripDeviceState({
       ...cloned,
       storageFolder: normalizeFolderPath(cloned.storageFolder),
       feeds: this.toPersistedFeeds(cloned.feeds),
-    };
+    }) as PersistedRssDashboardSettings;
+  }
+
+  /**
+   * Makes the hub's next save rewrite data.json, the copy older versions
+   * read, after shared settings changed through other devices' files.
+   */
+  public markMetadataStale(): void {
+    this.lastPersistedMetadataJson = null;
   }
 
   private capturePersistedState(settings: RssDashboardSettings): void {
@@ -1691,6 +1723,7 @@ export class FeedStorageRepository {
         null,
         2,
       );
+      this.lastPersistedBootstrapJson = bootstrapFingerprint(settings);
       const isV2 = settings.storageMode === "vault-shards-v2";
       this.lastPersistedShardJsonByFeedId = new Map(
         settings.feeds
@@ -2111,9 +2144,9 @@ export class FeedStorageRepository {
 
   /**
    * Whether user-state.json on disk holds something other than what this
-   * device last read or wrote. Every save stamps the file with a fresh sync
-   * nonce, so a copy that differs only by that stamp is unchanged; reloading
-   * for it would bounce saves between devices. A missing or unreadable file
+   * device last read or wrote, so a copy that only re-arrived through sync
+   * does not trigger a reload (and a save bounced back to the other device).
+   * Old versions' sync stamps are ignored. A missing or unreadable file
    * counts as changed.
    */
   public async hasUserStateChangedOnDisk(
@@ -2581,8 +2614,7 @@ export class FeedStorageRepository {
         : {}),
     };
 
-    // Rewriting an unchanged file would only give it a fresh sync stamp and
-    // a newer modified time. Obsidian Sync keeps the newest copy of a file
+    // Rewriting an unchanged file would only give it a newer modified time. Obsidian Sync keeps the newest copy of a file
     // changed on two devices, so an idle device that rewrote its stale copy
     // (on every feed refresh, say) would discard another device's read,
     // starred, and tag changes still on their way here.
@@ -2600,7 +2632,7 @@ export class FeedStorageRepository {
       return;
     }
 
-    const userStateFile = withSyncNonce(contents);
+    const userStateFile = contents;
     const path = this.getOwnUserStatePath(settings);
 
     // Ensure metadata folder exists

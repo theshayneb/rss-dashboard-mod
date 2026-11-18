@@ -712,3 +712,10 @@ body .rss-dashboard-tag-action-button svg {
     height: 16px;
   }
 }
+
+/* Saved, but the note has not synced to this device yet. */
+.rss-dashboard-save-toggle.rss-dashboard-saved-note-missing {
+  opacity: 0.5;
+  outline: 1px dashed var(--text-faint);
+  outline-offset: 1px;
+}

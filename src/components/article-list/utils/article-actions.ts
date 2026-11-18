@@ -93,14 +93,20 @@ export function createSaveButton(
   // add action instead of turning into "open saved article".
   const showsSaved =
     arg.article.saved && !arg.settings.articleSaving?.taskNotePath;
+  // Saved, but its note hasn't reached this device (yet): shown, never undone.
+  const noteMissing = Boolean(arg.article.saved && arg.article.savedNoteMissing);
   const saveButton = arg.actionToolbar.createDiv({
-    cls: `rss-dashboard-save-toggle clickable-icon ${showsSaved ? "saved" : ""}`,
+    cls: `rss-dashboard-save-toggle clickable-icon ${showsSaved ? "saved" : ""} ${
+      noteMissing ? "rss-dashboard-saved-note-missing" : ""
+    }`,
     attr: {
       role: "button",
       tabindex: "0",
-      "aria-label": showsSaved
-        ? "Click to open saved article"
-        : saveButtonLabel(arg.settings),
+      "aria-label": noteMissing
+        ? "Saved, but the note isn't on this device yet"
+        : showsSaved
+          ? "Click to open saved article"
+          : saveButtonLabel(arg.settings),
     },
   });
   setIcon(saveButton, "save");

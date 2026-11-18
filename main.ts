@@ -72,6 +72,25 @@ import {
 } from "./src/utils/original-plugin-import";
 import { settingsFingerprint } from "./src/utils/settings-fingerprint";
 import { getOrCreateDeviceId } from "./src/utils/device-id";
+import { SyncSettleTracker } from "./src/utils/sync-settle";
+import { SharedSettingsStore } from "./src/services/shared-settings-store";
+import {
+  applySharedEntries,
+  flattenSharedSettings,
+  legacyEntries,
+  liveSharedValues,
+  localSharedChanges,
+  mergeSharedSources,
+  stableStringify,
+  type SharedEntry,
+} from "./src/services/shared-settings";
+import {
+  applyDeviceState,
+  isBackgroundTasksEnabled,
+  loadDeviceState,
+  saveDeviceState,
+  setBackgroundTasksEnabled,
+} from "./src/utils/device-state";
 import { formatSyncCheckReport } from "./src/utils/sync-check-report";
 import { SyncCheckModal } from "./src/modals/sync-check-modal";
 import {
@@ -336,6 +355,15 @@ export default class RssDashboardPlugin extends Plugin {
   private refreshStatusRenderTimeoutId: number | null = null;
   private autoRefreshScheduler: FeedRefreshScheduler | null = null;
   private suppressWatcherUntil = 0;
+  /** This device's shared settings file, and every other device's. */
+  private sharedSettingsStore: SharedSettingsStore;
+  /** Shared settings as this device last read or wrote them: the merge base. */
+  private sharedKnown: Record<string, SharedEntry> = {};
+  /** data.json's shared settings, read as input dated 0 (older versions). */
+  private sharedLegacy: Record<string, SharedEntry> = {};
+  /** Whether Obsidian Sync has likely caught up; see sync-settle.ts. */
+  private syncSettle = new SyncSettleTracker(this.app);
+  private startupFixesTimer: number | null = null;
   /** data.json as this device last read or wrote it, minus sync bookkeeping. */
   private lastPersistedSettingsFingerprint: string | null = null;
   private static readonly FEED_REFRESH_RENDER_THROTTLE_MS = 250;
@@ -362,8 +390,13 @@ export default class RssDashboardPlugin extends Plugin {
         );
       },
     });
+    const deviceId = getOrCreateDeviceId(app, Platform.isMobile);
+    this.sharedSettingsStore = new SharedSettingsStore(app, deviceId, (fn) =>
+      this.writeWithWatcherSuppressed(fn),
+    );
     this.feedStorageRepository = new FeedStorageRepository(app, {
-      deviceId: getOrCreateDeviceId(app, Platform.isMobile),
+      deviceId,
+      canWriteFeedContent: () => this.isBackgroundTasksEnabled(),
       writeWrapper: (fn) => this.writeWithWatcherSuppressed(fn),
       onUserStateHealthChange: () => {
         void this.notifyRefreshStatusChanged();
@@ -743,14 +776,54 @@ export default class RssDashboardPlugin extends Plugin {
         requestGlobalRefresh: async () =>
           await this.refreshFeeds(undefined, "global"),
         requestDueFeeds: async (feeds) => await this.refreshFeeds(feeds, "due"),
+        canRun: () => this.canRunBackgroundWork(),
       });
     }
 
     return this.autoRefreshScheduler;
   }
 
+  /**
+   * Whether this device runs automatic work: scheduled refreshes, the startup
+   * refresh, and automatic fixes. Phones and tablets do only what the user
+   * does by hand, so their stale copies never overwrite the always-on device.
+   */
+  public isBackgroundTasksEnabled(): boolean {
+    return isBackgroundTasksEnabled(this.app, Platform.isDesktopApp);
+  }
+
+  public setBackgroundTasksEnabled(enabled: boolean): void {
+    setBackgroundTasksEnabled(this.app, enabled);
+    if (enabled) {
+      this.ensureAutoRefreshScheduler().start();
+      this.scheduleStartupSavedArticleValidation();
+    } else {
+      this.autoRefreshScheduler?.stop();
+    }
+  }
+
+  /** Background work may run: it is on here, and Obsidian Sync has caught up. */
+  public canRunBackgroundWork(): boolean {
+    return this.isBackgroundTasksEnabled() && this.syncSettle.isSettled();
+  }
+
   private async reconcileSavedArticlesOnStartup(): Promise<void> {
     if (this.hasCompletedStartupSavedArticleValidation) {
+      return;
+    }
+    if (!this.isBackgroundTasksEnabled()) {
+      return;
+    }
+    if (!this.syncSettle.isSettled()) {
+      // Fixing saved-note paths writes article state: not before Sync has
+      // delivered the notes and state other devices wrote meanwhile.
+      if (this.startupFixesTimer !== null) {
+        window.clearTimeout(this.startupFixesTimer);
+      }
+      this.startupFixesTimer = window.setTimeout(() => {
+        this.startupFixesTimer = null;
+        void this.reconcileSavedArticlesOnStartup();
+      }, 60 * 1000);
       return;
     }
 
@@ -1146,6 +1219,14 @@ export default class RssDashboardPlugin extends Plugin {
     await this.loadSettings();
     await this.initializeImageCache();
     this.registerVaultMetadataChangeListeners();
+    this.registerDomEvent(activeDocument, "visibilitychange", () => {
+      this.syncSettle.noteVisibility(activeDocument.visibilityState === "visible");
+    });
+    this.register(() => {
+      if (this.startupFixesTimer !== null) {
+        window.clearTimeout(this.startupFixesTimer);
+      }
+    });
 
     const view = await this.getActiveDashboardView();
     if (view) {
@@ -1155,10 +1236,6 @@ export default class RssDashboardPlugin extends Plugin {
     try {
       this.initializeSettingsBackedServices();
       const autoRefreshScheduler = this.ensureAutoRefreshScheduler();
-
-      if (Platform.isMobile) {
-        this.applyMobileOptimizations();
-      }
 
       this.scheduleStartupSavedArticleValidation();
 
@@ -1369,13 +1446,18 @@ export default class RssDashboardPlugin extends Plugin {
       const delay = Number.isFinite(this.settings.startupRefreshDelaySeconds)
         ? this.settings.startupRefreshDelaySeconds
         : DEFAULT_SETTINGS.startupRefreshDelaySeconds;
-      if (delay > 0) {
-        this.startupRefreshTimeoutId = window.setTimeout(() => {
-          this.startupRefreshTimeoutId = null;
+      // Only a device running background tasks refreshes on its own; the
+      // scheduler itself also waits for Obsidian Sync to settle.
+      // Phones and tablets refresh only when the user asks.
+      if (this.isBackgroundTasksEnabled()) {
+        if (delay > 0) {
+          this.startupRefreshTimeoutId = window.setTimeout(() => {
+            this.startupRefreshTimeoutId = null;
+            autoRefreshScheduler.start();
+          }, delay * 1000);
+        } else {
           autoRefreshScheduler.start();
-        }, delay * 1000);
-      } else {
-        autoRefreshScheduler.start();
+        }
       }
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -1519,23 +1601,6 @@ export default class RssDashboardPlugin extends Plugin {
       decodedUrl,
       this.buildUriAddFeedTitle(decodedUrl),
     ).open();
-  }
-
-  private applyMobileOptimizations(): void {
-    if (
-      this.settings.refreshInterval > 0 &&
-      this.settings.refreshInterval < 60
-    ) {
-      this.settings.refreshInterval = 60;
-    }
-
-    if (this.settings.maxItems > 50) {
-      this.settings.maxItems = 50;
-    }
-
-    if (!this.settings.sidebarCollapsed) {
-      this.settings.sidebarCollapsed = true;
-    }
   }
 
   async activateView() {
@@ -3137,10 +3202,17 @@ export default class RssDashboardPlugin extends Plugin {
       const wasNullLoad = data === null || vaultMetadataUnreadable;
       this.wasNullSettingsLoad = wasNullLoad;
 
-      const mergedSettings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
-      const originalSettingsJson = JSON.stringify(mergedSettings);
-
       this.settings = loadAndNormalizeSettings(data);
+      // This device's layout and refresh times, which are never synced.
+      applyDeviceState(this.settings, loadDeviceState(this.app));
+      // Shared settings: merge every device's file over data.json, which
+      // counts as dated 0 so an older version's copy never overrides an edit.
+      let sharedChangedOnLoad = false;
+      if (this.usesSharedSettingsFiles()) {
+        this.sharedLegacy = legacyEntries(this.settings);
+        this.sharedKnown = { ...this.sharedLegacy };
+        sharedChangedOnLoad = (await this.syncSharedSettings()).changedInMemory;
+      }
       // A fresh install has no data.json yet. Record the installed release
       // in memory so the first real save stores it, and What's New does not
       // treat a brand-new user as upgrading on their next launch. A synced
@@ -3166,6 +3238,10 @@ export default class RssDashboardPlugin extends Plugin {
       const hydrated = await this.feedStorageRepository.hydrateSettings(
         this.settings,
       );
+      if (sharedChangedOnLoad && this.isBackgroundTasksEnabled()) {
+        // The hub keeps data.json current for older versions.
+        this.feedStorageRepository.markMetadataStale();
+      }
       storageLog("Settings hydrated", {
         mode: this.settings.storageMode,
         folder: this.settings.storageFolder,
@@ -3187,13 +3263,15 @@ export default class RssDashboardPlugin extends Plugin {
       const isV2 = this.settings.storageMode === "vault-shards-v2";
       const isMissingUserState = isV2 && hydrated.userStateLoaded === false;
 
+      // Only a migration that changed something saves. Loading otherwise
+      // writes nothing, so opening Obsidian on a device that is behind never
+      // sends its stale copy back out through Sync.
       const shouldSave =
         !wasNullLoad &&
         !isMissingUserState &&
         (didMigrateKeywordRules ||
           hydrated.didChange ||
-          didNormalizeAndDedupeItems ||
-          JSON.stringify(this.settings) !== originalSettingsJson);
+          didNormalizeAndDedupeItems);
 
       if (shouldSave) {
         // On the first load, onload() has not initialized the services yet,
@@ -3239,7 +3317,34 @@ export default class RssDashboardPlugin extends Plugin {
     return (
       normalizedBase === `${normalizedFolder}/data.json` ||
       normalizedBase === `${normalizedFolder}/user-state.json` ||
-      this.isUserStatePath(filePath)
+      this.isUserStatePath(filePath) ||
+      this.isSharedSettingsPath(filePath) ||
+      this.isIncomingFeedShardPath(normalizedBase)
+    );
+  }
+
+  /**
+   * On a device without background tasks, the hub's feed shards arriving
+   * through Sync are how new articles get here, so they reload the feeds.
+   * The hub writes its own shards and does not need to.
+   */
+  private isSharedSettingsPath(filePath: string): boolean {
+    return (
+      Boolean(this.settings) &&
+      this.sharedSettingsStore.isSettingsFilePath(
+        this.settings.metadataStorageFolder,
+        filePath,
+      )
+    );
+  }
+
+  private isIncomingFeedShardPath(normalizedPath: string): boolean {
+    if (!this.settings || this.isBackgroundTasksEnabled()) return false;
+    const folder = this.settings.storageFolder.replace(/^\/+|\/+$/g, "");
+    return (
+      normalizedPath.startsWith(`${folder}/`) &&
+      normalizedPath.endsWith(".json") &&
+      !normalizedPath.slice(folder.length + 1).includes("/")
     );
   }
 
@@ -3253,6 +3358,68 @@ export default class RssDashboardPlugin extends Plugin {
     return this.feedStorageRepository.isUserStateFilePath(
       this.settings,
       filePath,
+    );
+  }
+
+  private usesSharedSettingsFiles(): boolean {
+    return this.settings?.storageMode === "vault-shards-v2";
+  }
+
+  /**
+   * Merges shared settings: every device's settings file, data.json (dated
+   * 0, from older versions), and the edits made here since this device last
+   * read or wrote them, each entry keeping its newest edit. The result is
+   * applied in memory. This device's file is written only if this device
+   * changed something, so a merge alone never sends anything back out.
+   */
+  private async syncSharedSettings(): Promise<{
+    changedInMemory: boolean;
+    feedsChanged: boolean;
+  }> {
+    const folder = this.settings.metadataStorageFolder;
+    const read = await this.sharedSettingsStore.readAll(folder);
+    if (read.status !== "ok") {
+      // This device's own file is unreadable: never write over it.
+      return { changedInMemory: false, feedsChanged: false };
+    }
+    const current = flattenSharedSettings(this.settings);
+    const changes = localSharedChanges(this.sharedKnown, current, Date.now());
+    // What this device last read or wrote takes part too: an entry no file
+    // holds right now is kept, never dropped; only a tombstone removes it.
+    const merged = {
+      ...mergeSharedSources(
+        [...read.sources, { entries: this.sharedKnown, isOwn: false }],
+        this.sharedLegacy,
+      ),
+      ...changes,
+    };
+
+    let changedInMemory = false;
+    let feedsChanged = false;
+    if (stableStringify(liveSharedValues(merged)) !== stableStringify(current)) {
+      ({ feedsChanged } = applySharedEntries(this.settings, merged));
+      // Feeds that arrived from another device get this device's refresh times.
+      applyDeviceState(this.settings, loadDeviceState(this.app));
+      changedInMemory = true;
+    }
+    this.sharedKnown = merged;
+    if (Object.keys(changes).length > 0) {
+      await this.sharedSettingsStore.writeOwn(folder, merged, read.ownFile);
+    }
+    return { changedInMemory, feedsChanged };
+  }
+
+  /** Edits made here that no settings file holds yet. */
+  private hasUnsavedSharedChanges(): boolean {
+    if (!this.settings || !this.usesSharedSettingsFiles()) return false;
+    return (
+      Object.keys(
+        localSharedChanges(
+          this.sharedKnown,
+          flattenSharedSettings(this.settings),
+          Date.now(),
+        ),
+      ).length > 0
     );
   }
 
@@ -3285,6 +3452,11 @@ export default class RssDashboardPlugin extends Plugin {
     this.vaultMetadataReloadTimer = window.setTimeout(() => {
       this.vaultMetadataReloadTimer = null;
       void (async () => {
+        // Merge, don't overwrite: edits made here that no file holds yet are
+        // saved first, so the reload merges them instead of dropping them.
+        if (this.hasUnsavedSharedChanges()) {
+          await this.saveSettings();
+        }
         await this.loadSettings();
         await this.refreshDashboardViewsKeepingScroll();
       })();
@@ -3298,6 +3470,8 @@ export default class RssDashboardPlugin extends Plugin {
     if (typeof vault.on !== "function") return;
 
     const scheduleReload = (file?: unknown, oldPath?: unknown): void => {
+      // Any vault change: Sync may still be delivering other devices' work.
+      this.syncSettle.noteVaultChange();
       if (Date.now() < this.suppressWatcherUntil) return;
 
       const candidatePaths: string[] = [];
@@ -3315,22 +3489,30 @@ export default class RssDashboardPlugin extends Plugin {
 
       if (!watched) return;
 
-      const userStateOnly = candidatePaths.every((candidatePath) =>
-        this.isUserStatePath(candidatePath),
+      const perDeviceFilesOnly = candidatePaths.every(
+        (candidatePath) =>
+          this.isUserStatePath(candidatePath) ||
+          this.isSharedSettingsPath(candidatePath),
       );
-      if (!userStateOnly) {
+      if (!perDeviceFilesOnly) {
         this.scheduleExternalSettingsReload();
         return;
       }
 
+      // Another device's file: reload only for a real change, not a copy
+      // that merely arrived again (or this device's own write).
       void (async () => {
         for (const candidatePath of candidatePaths) {
-          if (
-            await this.feedStorageRepository.hasUserStateChangedOnDisk(
-              this.settings,
-              candidatePath,
-            )
-          ) {
+          const changed = this.isSharedSettingsPath(candidatePath)
+            ? await this.sharedSettingsStore.hasChanged(
+                this.settings.metadataStorageFolder,
+                candidatePath,
+              )
+            : await this.feedStorageRepository.hasUserStateChangedOnDisk(
+                this.settings,
+                candidatePath,
+              );
+          if (changed) {
             this.scheduleExternalSettingsReload();
             return;
           }
@@ -3567,6 +3749,22 @@ export default class RssDashboardPlugin extends Plugin {
   }
 
   async saveSettings(options: PersistSettingsOptions = {}) {
+    // Local only: a layout change or refresh time never touches synced files.
+    saveDeviceState(this.app, this.settings);
+
+    // Read, merge, then write: other devices' edits are merged in first.
+    let sharedChangedInMemory = false;
+    if (this.usesSharedSettingsFiles()) {
+      const shared = await this.syncSharedSettings();
+      sharedChangedInMemory = shared.changedInMemory;
+      if (shared.feedsChanged) {
+        // A feed another device added: load its articles from the shards.
+        await this.feedStorageRepository.hydrateSettings(this.settings);
+      }
+      if (shared.changedInMemory && this.isBackgroundTasksEnabled()) {
+        this.feedStorageRepository.markMetadataStale();
+      }
+    }
     storageLog("saveSettings invoked", {
       mode: this.settings.storageMode,
       folder: this.settings.storageFolder,
@@ -3587,6 +3785,10 @@ export default class RssDashboardPlugin extends Plugin {
         console.error("[RSS Dashboard] Backup after save failed:", error);
       }
       this.autoRefreshScheduler?.reschedule();
+      if (sharedChangedInMemory) {
+        // Another device's edits arrived with this save: show them.
+        await this.refreshDashboardViewsKeepingScroll();
+      }
     } catch (error) {
       storageError("saveSettings failed", error, {
         mode: this.settings.storageMode,
@@ -4122,31 +4324,26 @@ export default class RssDashboardPlugin extends Plugin {
     }
   }
 
+  /**
+   * Flags saved articles whose note is not on this device. It never un-saves
+   * them: the note may simply not have synced here yet, and un-saving would
+   * be a new edit that overwrote the other devices' saved state.
+   */
   private async validateSavedArticles(): Promise<void> {
-    let updatedCount = 0;
+    let changedCount = 0;
 
     for (const feed of this.settings.feeds) {
       for (const item of feed.items) {
-        if (item.saved) {
-          const fileExists = this.articleSaver.checkSavedFileExists(item);
-          if (!fileExists) {
-            item.saved = false;
-            item.savedFilePath = undefined;
-
-            if (item.tags) {
-              item.tags = item.tags.filter(
-                (tag) => tag.name.toLowerCase() !== "saved",
-              );
-            }
-            updatedCount++;
-          }
+        const missing =
+          Boolean(item.saved) && !this.articleSaver.checkSavedFileExists(item);
+        if (Boolean(item.savedNoteMissing) !== missing) {
+          item.savedNoteMissing = missing || undefined;
+          changedCount++;
         }
       }
     }
 
-    if (updatedCount > 0) {
-      await this.saveSettings();
-
+    if (changedCount > 0) {
       const view = await this.getActiveDashboardView();
       if (view) {
         view.render();
