@@ -250,7 +250,10 @@ export function mergeUserStateSources(sources: UserStateSource[]): UserStateFile
       const values = userStateFieldValues(state);
       const best = newest.get(key) ?? { values: [], changedAt: {} };
       USER_STATE_FIELDS.forEach((field, index) => {
-        const at = fieldChangedAt(state, field, modifiedAt);
+        // An entry with no edit time (an older version wrote it) counts as
+        // dated 0: it fills gaps, never overrides a timed edit. Its file's
+        // modified time says when it was written, not when anything changed.
+        const at = fieldChangedAt(state, field, 0);
         const bestAt = best.changedAt[field];
         if (bestAt === undefined || at >= bestAt) {
           best.values[index] = values[index];
@@ -670,6 +673,12 @@ export class FeedStorageRepository {
    * on-disk state, which another device may have changed through sync.
    */
   private knownUserStateByKey = new Map<string, string>();
+  /**
+   * Articles shown read because of a read-through mark, with the mark's edit
+   * time: saved with that time rather than the save time, so a mark made
+   * days ago on a late device cannot outrank a newer unread elsewhere.
+   */
+  private readThroughAppliedAt = new Map<string, number>();
   private warnedUserStateUnreadable = false;
   /** user-state.json as this device last read or wrote it, minus its sync stamp. */
   private lastUserStateFingerprint: string | null = null;
@@ -950,16 +959,22 @@ export class FeedStorageRepository {
           );
           // Shown read at once; the next save records it as a change made
           // here, so it reaches this device's file too.
+          const mark = userState?.readThroughByFeedId?.[feedId];
           if (
             this.deviceId &&
             isCoveredByReadThrough(
               item,
-              userState?.readThroughByFeedId?.[feedId],
+              mark,
               state,
               settings.useFirstSeenDateFallback,
-            )
+            ) &&
+            mark
           ) {
             item.read = true;
+            this.readThroughAppliedAt.set(
+              userStateKey(feedId, item.guid),
+              mark.recordedAt,
+            );
           }
         }
       }
@@ -2381,16 +2396,19 @@ export class FeedStorageRepository {
         item: FeedItem,
         entry: ArticleUserState | undefined,
       ) => {
+        const mark = readThrough[feedId];
         if (
           this.deviceId &&
+          mark &&
           isCoveredByReadThrough(
             item,
-            readThrough[feedId],
+            mark,
             entry,
             settings.useFirstSeenDateFallback,
           )
         ) {
           item.read = true;
+          this.readThroughAppliedAt.set(userStateKey(feedId, item.guid), mark.recordedAt);
         }
       };
 
@@ -2444,6 +2462,20 @@ export class FeedStorageRepository {
         const state = this.deviceId
           ? mergeLocalUserStateChange(local, knownState, baseline, now)
           : local;
+        const markedAt = this.readThroughAppliedAt.get(key);
+        if (markedAt !== undefined) {
+          this.readThroughAppliedAt.delete(key);
+          if (state.read && state.changedAt?.read === now) {
+            // Read because of a mark: dated when the mark's reads were made.
+            state.changedAt.read = markedAt;
+            state.updatedAt = Math.max(
+              0,
+              ...Object.values(state.changedAt).filter(
+                (at): at is number => typeof at === "number",
+              ),
+            );
+          }
+        }
         if (this.deviceId) applyUserStateToItem(item, state);
         states[key] = state;
         this.knownUserStateByKey.set(key, userStateSignature(state));
@@ -2458,9 +2490,22 @@ export class FeedStorageRepository {
             getEffectiveDateMs(item, settings.useFirstSeenDateFallback),
           ),
         );
+        // Dated by the latest read edit in the feed, not this save: a device
+        // syncing days late must not date old reads as new.
+        const recordedAt = Math.max(
+          0,
+          ...feed.items.map((item) => {
+            const entry = states[userStateKey(feedId, item.guid)];
+            return entry ? fieldChangedAt(entry, "read", 0) : 0;
+          }),
+        );
         const current = readThrough[feedId];
-        if (through > 0 && (!current || through > current.through)) {
-          readThrough[feedId] = { through, recordedAt: now };
+        if (
+          through > 0 &&
+          recordedAt > 0 &&
+          (!current || through > current.through)
+        ) {
+          readThrough[feedId] = { through, recordedAt };
         }
       }
     }
