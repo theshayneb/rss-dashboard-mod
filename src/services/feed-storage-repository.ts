@@ -2381,6 +2381,11 @@ export class FeedStorageRepository {
         ? cloneJson(existing.file.unrecognizedFeedSinceByFeedId ?? {})
         : {};
     const now = Date.now();
+    // Whether this device changed anything itself in this save. With one
+    // file per device, only such a change is worth writing: other devices'
+    // changes are already in their own files, and copying them here would
+    // only make every open device rewrite its file in turn, over and over.
+    let hadLocalChange = false;
 
     const readThrough: Record<string, ReadThroughMark> =
       this.deviceId && existing.status === "ok"
@@ -2415,7 +2420,14 @@ export class FeedStorageRepository {
       for (const item of feed.items) {
         const key = userStateKey(feedId, item.guid);
         const baseline = states[key];
-        applyReadThrough(item, baseline);
+        // An article this device just marked unread (it was known as read)
+        // is the user's edit: a read-through mark must not undo it.
+        const known = this.knownUserStateByKey.get(key);
+        const markedUnreadHere =
+          !item.read &&
+          known !== undefined &&
+          (JSON.parse(known) as unknown[])[0] === true;
+        if (!markedUnreadHere) applyReadThrough(item, baseline);
 
         // An item this session has never synced with persisted state (it
         // arrived via a refresh after its feed missed the one
@@ -2451,7 +2463,7 @@ export class FeedStorageRepository {
         const hasSignal = Boolean(
           item.read || item.starred || (item.tags && item.tags.length > 0) || item.saved || item.playbackProgress,
         );
-        if (!hasSignal && !baseline) {
+        if (!hasSignal && !baseline && !markedUnreadHere) {
           continue;
         }
 
@@ -2475,6 +2487,12 @@ export class FeedStorageRepository {
               ),
             );
           }
+        }
+        if (
+          this.deviceId &&
+          Object.values(state.changedAt ?? {}).some((at) => at === now)
+        ) {
+          hadLocalChange = true;
         }
         if (this.deviceId) applyUserStateToItem(item, state);
         states[key] = state;
@@ -2506,6 +2524,7 @@ export class FeedStorageRepository {
           (!current || through > current.through)
         ) {
           readThrough[feedId] = { through, recordedAt };
+          hadLocalChange = true;
         }
       }
     }
@@ -2663,6 +2682,29 @@ export class FeedStorageRepository {
     // changed on two devices, so an idle device that rewrote its stale copy
     // (on every feed refresh, say) would discard another device's read,
     // starred, and tag changes still on their way here.
+    if (this.deviceId) {
+      const ownFile = existing.status === "ok" ? (existing.ownFile ?? null) : null;
+      const ownBookkeeping = (file: UserStateFile | null) =>
+        JSON.stringify([
+          file?.missingSinceByStateKey ?? {},
+          file?.unattributedFirstObservedAtByGuid ?? {},
+          file?.unrecognizedFeedSinceByFeedId ?? {},
+        ]);
+      const bookkeepingChanged =
+        ownBookkeeping(ownFile) !== ownBookkeeping(contents);
+      // With no state file in the folder at all (a new data folder, or the
+      // first device), this device's state is the only copy: write it.
+      const noFileYet = existing.status === "missing";
+      if (
+        !hadLocalChange &&
+        !noFileYet &&
+        removedFeedIds.size === 0 &&
+        !bookkeepingChanged
+      ) {
+        settleRemovals();
+        return;
+      }
+    }
     const previouslyWritten =
       existing.status !== "ok"
         ? null
