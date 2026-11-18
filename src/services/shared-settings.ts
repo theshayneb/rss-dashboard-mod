@@ -169,12 +169,19 @@ export function liveSharedValues(
   return values;
 }
 
+/**
+ * Items in their saved order; a tie (two devices adding at the same place)
+ * is broken by key, so every device settles on the same order.
+ */
 function ordered<T>(items: [string, unknown][]): (T & Record<string, unknown>)[] {
-  return items
-    .map(([, value]) => value as T & Record<string, unknown>)
+  return [...items]
     .sort(
-      (a, b) => Number(a[ORDER] ?? 0) - Number(b[ORDER] ?? 0),
-    );
+      ([keyA, a], [keyB, b]) =>
+        Number((a as Record<string, unknown>)[ORDER] ?? 0) -
+          Number((b as Record<string, unknown>)[ORDER] ?? 0) ||
+        (keyA < keyB ? -1 : keyA > keyB ? 1 : 0),
+    )
+    .map(([, value]) => value as T & Record<string, unknown>);
 }
 
 function withoutOrder<T>(value: T & Record<string, unknown>): T {
@@ -201,7 +208,11 @@ function buildFolderTree(values: Record<string, unknown>): Folder[] {
   }
   const finish = (folders: (Folder & { [ORDER]?: number })[]): Folder[] =>
     folders
-      .sort((a, b) => Number(a[ORDER] ?? 0) - Number(b[ORDER] ?? 0))
+      .sort(
+        (a, b) =>
+          Number(a[ORDER] ?? 0) - Number(b[ORDER] ?? 0) ||
+          (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+      )
       .map((folder) => {
         const { [ORDER]: _order, ...rest } = folder;
         void _order;

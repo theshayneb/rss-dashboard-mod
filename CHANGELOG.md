@@ -1,3 +1,11 @@
+## 2.7.17 - November 18, 2026 (RSS Reader)
+
+### Fixes
+
+- Fixed devices that are open at the same time endlessly re-syncing each other's read-state files. Each device's `user-state.<device>.json` holds the merged read state of every device, and a save rewrote it whenever that merged view changed, so one change on the phone made every other open device rewrite its own file to copy it, and each of those rewrites set off the others again. A device now writes its read-state file only for a change made on that device (an edit, a read-through mark it recorded, a feed removed there, or its own clean-up bookkeeping), or when the folder has no read-state file yet, such as after moving the data folder. Other devices' changes are still merged in when reading, so nothing is lost.
+- An article marked unread on this device stays unread even when another device has read everything in that feed through a later date.
+- Shared feeds, folders, tags, and templates that two devices added at the same place now settle on the same order on every device straight away.
+
 ## 2.7.16 - November 18, 2026 (RSS Reader)
 
 **Update every device.** Older versions keep auto-refreshing and rewriting shared files until updated. What they add is kept, but their deletions and renames of shared settings can't be trusted and are ignored.

@@ -211,3 +211,39 @@ describe("flattenSharedSettings()", () => {
     );
   });
 });
+
+describe("several devices open at once", () => {
+  it("settles after concurrent edits instead of rewriting settings round after round", async () => {
+    const app = App.createMock();
+    const start = settingsWith([feed("a"), feed("b")]);
+    start.folders = [{ name: "News", subfolders: [] }];
+    const desktop = device(app, "desktop", JSON.parse(JSON.stringify(start)));
+    const phone = device(app, "phone", JSON.parse(JSON.stringify(start)));
+    const tablet = device(app, "tablet", JSON.parse(JSON.stringify(start)));
+
+    // Both add a feed and a folder at the end, at the same time.
+    desktop.state.settings.feeds.push(feed("x"));
+    desktop.state.settings.folders.push({ name: "Desk", subfolders: [] });
+    phone.state.settings.feeds.push(feed("y"));
+    phone.state.settings.folders.push({ name: "Phone", subfolders: [] });
+    await desktop.sync(1_000);
+    await phone.sync(1_000);
+
+    let writes = 0;
+    for (let round = 1; round <= 4; round++) {
+      writes = 0;
+      for (const each of [desktop, phone, tablet]) {
+        if ((await each.sync(1_000 + round * 1_000)).wrote) writes++;
+      }
+    }
+
+    expect(writes).toBe(0);
+    for (const each of [desktop, phone, tablet]) {
+      expect(each.titles()).toEqual(desktop.titles());
+      expect(each.state.settings.folders.map((f) => f.name)).toEqual(
+        desktop.state.settings.folders.map((f) => f.name),
+      );
+    }
+    expect(desktop.titles()).toEqual(expect.arrayContaining(["a", "b", "x", "y"]));
+  });
+});
