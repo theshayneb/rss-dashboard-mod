@@ -270,3 +270,55 @@ describe("article state changed by another device", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 });
+
+describe("a saved article whose note has not synced here yet", () => {
+  it("stays saved and is only flagged, writing nothing", async () => {
+    const plugin = await launch(App.createMock(), {
+      ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+      storageMode: "vault-shards-v2",
+      storageFolder: "Utilities/RSS Reader/feeds",
+      metadataStorageFolder: "Utilities/RSS Reader",
+    });
+    const feed = sampleFeed();
+    feed.items[0].saved = true;
+    feed.items[0].savedFilePath = "RSS articles/Not synced yet.md";
+    feed.items[0].tags = [{ name: "saved", color: "#fff" }];
+    plugin.settings.feeds.push(feed);
+    (
+      plugin as unknown as { initializeSettingsBackedServices: () => void }
+    ).initializeSettingsBackedServices();
+    vi.mocked(plugin.saveData).mockClear();
+
+    await (
+      plugin as unknown as { validateSavedArticles: () => Promise<void> }
+    ).validateSavedArticles();
+
+    expect(feed.items[0]).toMatchObject({
+      saved: true,
+      savedFilePath: "RSS articles/Not synced yet.md",
+      savedNoteMissing: true,
+      tags: [{ name: "saved", color: "#fff" }],
+    });
+    expect(plugin.saveData).not.toHaveBeenCalled();
+  });
+});
+
+describe("opening Obsidian writes nothing", () => {
+  it("loads without writing data.json or a settings file", async () => {
+    const app = App.createMock();
+    const data = {
+      ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+      storageMode: "vault-shards-v2",
+      storageFolder: "Utilities/RSS Reader/feeds",
+      metadataStorageFolder: "Utilities/RSS Reader",
+      feeds: [{ ...sampleFeed(), items: undefined }],
+    };
+    await app.vault.adapter.mkdir("Utilities/RSS Reader/feeds");
+    const write = vi.spyOn(app.vault.adapter, "write");
+
+    const plugin = await launch(app, data);
+
+    expect(plugin.saveData).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+});

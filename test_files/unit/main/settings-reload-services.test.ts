@@ -120,7 +120,9 @@ describe("services after settings are reloaded from another device", () => {
       app.vault.adapter as unknown as VaultAdapterStub
     ).read("./feeds.opml.backup");
     expect(opml).toContain("after-sync");
-    expect(opml).not.toContain("before-sync");
+    // data.json from an older version can add feeds but not remove one this
+    // device already recorded in its own settings file.
+    expect(opml).toContain("before-sync");
   });
 
   it("adds new folders to the reloaded folder list", async () => {
@@ -132,10 +134,11 @@ describe("services after settings are reloaded from another device", () => {
       saveSettings: false,
     });
 
-    expect(plugin.settings.folders.map((folder) => folder.name)).toEqual([
-      "Synced",
-      "Added after sync",
-    ]);
+    // Added to the reloaded list (which also keeps this device's "Local").
+    expect(plugin.settings.folders.map((folder) => folder.name)).toEqual(
+      expect.arrayContaining(["Synced", "Local", "Added after sync"]),
+    );
+    expect(plugin.settings.folders).toHaveLength(3);
   });
 
   it("keeps a queued background import through the reload", async () => {

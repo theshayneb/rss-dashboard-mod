@@ -134,4 +134,31 @@ describe("FeedRefreshScheduler", () => {
     scheduler.stop();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("waits while refreshing may not run, checking again a minute later", async () => {
+    let lastGlobalRefresh = 0;
+    const requestGlobalRefresh = vi.fn().mockImplementation(async () => {
+      lastGlobalRefresh = Date.now();
+    });
+    let allowed = false;
+    const scheduler = new FeedRefreshScheduler({
+      getFeeds: () => [createFeed()],
+      getGlobalIntervalMinutes: () => 30,
+      getLastGlobalRefreshCompletedAt: () => lastGlobalRefresh,
+      isBatchRunning: () => false,
+      requestGlobalRefresh,
+      requestDueFeeds: vi.fn().mockResolvedValue(undefined),
+      canRun: () => allowed,
+    });
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(requestGlobalRefresh).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(1);
+
+    allowed = true;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(requestGlobalRefresh).toHaveBeenCalledTimes(1);
+    scheduler.stop();
+  });
 });

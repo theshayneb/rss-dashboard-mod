@@ -21,6 +21,9 @@ function createPlugin() {
     isInDataFolder: vi.fn(() => true),
     moveStorageToDataFolder: vi.fn(async () => true),
     backupAndMigrateStorageToV2: vi.fn(async () => {}),
+    deviceId: "desktop-test",
+    isBackgroundTasksEnabled: vi.fn(() => true),
+    setBackgroundTasksEnabled: vi.fn(),
   };
 }
 
@@ -53,6 +56,7 @@ describe("renderSimpleSettings()", () => {
     expect(settingNames(containerEl)).toEqual([
       "Feeds",
       "Auto-refresh interval",
+      "Run background tasks on this device",
       "Save button adds a task to",
       "Data folder",
       "Sync check",
@@ -93,5 +97,27 @@ describe("renderSimpleSettings()", () => {
 
     expect(plugin.settings.refreshInterval).toBe(60);
     expect(plugin.saveSettings).toHaveBeenCalled();
+  });
+
+  it("turns background tasks on or off for this device only", () => {
+    const containerEl = document.body.appendChild(createDiv());
+    const plugin = createPlugin();
+    renderSimpleSettings(containerEl, plugin, {
+      onManageFeeds: vi.fn(),
+      onCheckSync: vi.fn(),
+      onShowAllSettings: vi.fn(),
+    });
+
+    const toggle = Array.from(containerEl.querySelectorAll(".setting-item"))
+      .find((el) => el.textContent?.includes("Run background tasks on this device"))
+      ?.querySelector<HTMLInputElement>("input[type=checkbox]");
+    expect(toggle?.checked).toBe(true);
+    toggle!.checked = false;
+    toggle!.dispatchEvent(new Event("change"));
+
+    expect(plugin.setBackgroundTasksEnabled).toHaveBeenCalledWith(false);
+    expect(
+      containerEl.textContent,
+    ).toContain("This device: desktop-test");
   });
 });

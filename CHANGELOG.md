@@ -1,3 +1,22 @@
+## 2.7.16 - November 18, 2026 (RSS Reader)
+
+**Update every device.** Older versions keep auto-refreshing and rewriting shared files until updated. What they add is kept, but their deletions and renames of shared settings can't be trusted and are ignored.
+
+### Sync: one always-on hub, everything merged by edit time
+
+- Added **Run background tasks on this device** (settings page), stored per device. It's on by default on desktop and off on phones and tablets. Automatic refreshes, the startup refresh, and automatic fixes run only where it's on, and only once Obsidian Sync has caught up: Obsidian open for 3 minutes, no vault file changed for a minute, and Sync not reporting it's syncing. The wait starts again when the app returns after 5 minutes or more in the background. Other devices refresh only when you ask, keep those results to themselves, and get new articles from the hub's synced feed files.
+- Only a device running background tasks writes the synced feed files (shards). Moving storage, repairing, and imports still work on any device.
+- Shared settings are now kept in one `settings.<device>.json` per device in the data folder and merged on read. Every feed, folder, tag, template, highlight word, keyword rule, and setting carries the time it was edited, and deletions are kept as tombstones, so a device syncing hours or days late can't undo an edit made meanwhile elsewhere. `data.json` is read as old-format input dated 0 (it can add, never override), and in Shard storage v2 only the hub keeps it current for older versions. A merge that changes nothing writes nothing.
+- Read, starred, and tag state: an entry without edit times (written by an older version) now counts as dated 0 instead of taking its file's modified time. Read-through marks are dated by the reads they cover, not by when they were saved.
+- Removed the per-save sync nonce and the 1–2 KB padding from `data.json` and `user-state` files.
+- Per-device layout and refresh bookkeeping now stay in Obsidian's per-device storage and never sync: view style, page sizes, view and reader locations, saved-note open location, web viewer, storage migration prompts, and each feed's last refresh times, diagnostics, and errors. Everything else stays shared, including sort and group-by, sidebar and folder collapse, filters, and folder and feed sort orders.
+- Loading no longer saves: only a migration that changed something writes.
+
+### Fixes
+
+- Phones and tablets no longer change shared settings on startup: they forced the refresh interval to 60 minutes, capped every feed at 50 articles, and collapsed the sidebar for all devices.
+- A saved article whose note hasn't reached this device yet is no longer un-saved (which also removed its "saved" tag on every device). The save button shows it as "saved, but the note isn't on this device yet" instead.
+
 ## 2.7.15 - November 6, 2026 (RSS Reader)
 
 ### Fixes

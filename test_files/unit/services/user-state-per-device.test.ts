@@ -316,11 +316,13 @@ describe("read-through marks for articles only one device has", () => {
 });
 
 describe("mergeUserStateSources()", () => {
-  it("keeps each article's newest entry, dating entries without one by their file", () => {
+  it("keeps each article's newest edit; an entry without edit times counts as 0", () => {
     const merged = mergeUserStateSources([
       {
-        file: { version: 3, states: { "f:a": { read: true }, "f:b": { read: true, updatedAt: 50 } } },
-        modifiedAt: 100,
+        // An older version rewrote this file just now (modified 1000), but
+        // its entries carry no edit times.
+        file: { version: 3, states: { "f:a": { read: true }, "f:b": { read: true, updatedAt: 50 }, "f:c": { starred: true } } },
+        modifiedAt: 1_000,
         isOwn: false,
       },
       {
@@ -330,14 +332,10 @@ describe("mergeUserStateSources()", () => {
       },
     ]);
 
-    expect(merged.states["f:a"]).toMatchObject({
-      read: true,
-      changedAt: { read: 100 },
-    });
-    expect(merged.states["f:b"]).toMatchObject({
-      read: false,
-      changedAt: { read: 60 },
-    });
+    expect(merged.states["f:a"]).toMatchObject({ read: false, changedAt: { read: 90 } });
+    expect(merged.states["f:b"]).toMatchObject({ read: false, changedAt: { read: 60 } });
+    // ...but still fills a gap no timed entry covers.
+    expect(merged.states["f:c"]).toMatchObject({ starred: true });
   });
 
   it("merges field by field, so a star on one device keeps a read from another", () => {
@@ -372,5 +370,86 @@ describe("mergeUserStateSources()", () => {
     ]);
 
     expect(merged.states["f:a"]?.read).toBe(false);
+  });
+});
+
+describe("a tablet that syncs three days late", () => {
+  const D = (day: number) => Date.parse("2026-11-01T00:00:00Z") + day * 24 * 60 * 60 * 1000;
+  const tabletPath = `${FOLDER}/user-state.tablet-1.json`;
+
+  it("cannot undo a read mark made on the desktop yesterday", async () => {
+    const desktop = device(app, "desktop-1");
+    await desktop.repository.hydrateSettings(desktop.settings);
+    vi.setSystemTime(D(2));
+    desktop.article("a").read = true;
+    await desktop.repository.saveUserStateFromFeeds(desktop.settings);
+
+    // Written on the tablet on day 0.5 (it marked a unread then), synced in
+    // only now, on day 3.
+    vi.setSystemTime(D(3));
+    await app.vault.adapter.write(
+      tabletPath,
+      JSON.stringify({
+        version: 3,
+        states: {
+          "feed-1:a": { read: false, updatedAt: D(0.5), changedAt: { read: D(0.5) } },
+        },
+      }),
+    );
+
+    const reloaded = device(app, "desktop-1");
+    await reloaded.repository.hydrateSettings(reloaded.settings);
+    expect(reloaded.article("a").read).toBe(true);
+  });
+
+  it("cannot undo, with an old read-through mark, an unread made on the desktop yesterday", async () => {
+    const desktop = device(app, "desktop-1");
+    await desktop.repository.hydrateSettings(desktop.settings);
+    vi.setSystemTime(D(1));
+    desktop.article("a").read = true;
+    await desktop.repository.saveUserStateFromFeeds(desktop.settings);
+    vi.setSystemTime(D(2));
+    desktop.article("a").read = false;
+    await desktop.repository.saveUserStateFromFeeds(desktop.settings);
+
+    // The tablet read everything on day 0.5; its file, with a mark dated by
+    // those reads, arrives on day 3.
+    vi.setSystemTime(D(3));
+    await app.vault.adapter.write(
+      tabletPath,
+      JSON.stringify({
+        version: 3,
+        states: {
+          "feed-1:a": { read: true, updatedAt: D(0.5), changedAt: { read: D(0.5) } },
+          "feed-1:b": { read: true, updatedAt: D(0.5), changedAt: { read: D(0.5) } },
+          "feed-1:c": { read: true, updatedAt: D(0.5), changedAt: { read: D(0.5) } },
+        },
+        readThroughByFeedId: {
+          "feed-1": { through: Date.parse("2026-10-01T00:00:00Z"), recordedAt: D(0.5) },
+        },
+      }),
+    );
+
+    const reloaded = device(app, "desktop-1");
+    await reloaded.repository.hydrateSettings(reloaded.settings);
+    expect(reloaded.article("a").read).toBe(false);
+    expect(reloaded.article("b").read).toBe(true);
+  });
+
+  it("dates its read-through mark by when the reads were made, not when it saves", async () => {
+    const tablet = device(app, "tablet-1");
+    await tablet.repository.hydrateSettings(tablet.settings);
+    vi.setSystemTime(D(0.5));
+    for (const guid of ["a", "b", "c"]) tablet.article(guid).read = true;
+    await tablet.repository.saveUserStateFromFeeds(tablet.settings);
+
+    vi.setSystemTime(D(3));
+    tablet.article("a").starred = true;
+    await tablet.repository.saveUserStateFromFeeds(tablet.settings);
+
+    const file = JSON.parse(await app.vault.adapter.read(tabletPath)) as {
+      readThroughByFeedId?: Record<string, { recordedAt: number }>;
+    };
+    expect(file.readThroughByFeedId?.["feed-1"]?.recordedAt).toBe(D(0.5));
   });
 });

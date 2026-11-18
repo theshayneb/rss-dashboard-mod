@@ -827,6 +827,11 @@ describe("onload() initialization", () => {
       plugin as unknown as PluginPrivateAPI,
       "validateSavedArticles",
     );
+    vi.spyOn(plugin, "isBackgroundTasksEnabled").mockReturnValue(true);
+    vi.spyOn(
+      (plugin as unknown as { syncSettle: { isSettled: () => boolean } }).syncSettle,
+      "isSettled",
+    ).mockReturnValue(true);
 
     await plugin.onload();
 
@@ -842,6 +847,43 @@ describe("onload() initialization", () => {
       (plugin as unknown as PluginPrivateAPI).articleSaver.fixSavedFilePaths,
     ).toHaveBeenCalledTimes(1);
     expect(validateSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run startup fixes on a device without background tasks", async () => {
+    vi.spyOn(plugin, "isBackgroundTasksEnabled").mockReturnValue(false);
+
+    await plugin.onload();
+    app.workspace.triggerLayoutReady();
+    await flushPromises();
+
+    expect(
+      (plugin as unknown as PluginPrivateAPI).articleSaver.fixSavedFilePaths,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("waits for Obsidian Sync to settle before startup fixes", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(plugin, "isBackgroundTasksEnabled").mockReturnValue(true);
+    const settled = vi
+      .spyOn(
+        (plugin as unknown as { syncSettle: { isSettled: () => boolean } }).syncSettle,
+        "isSettled",
+      )
+      .mockReturnValue(false);
+
+    await plugin.onload();
+    app.workspace.triggerLayoutReady();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      (plugin as unknown as PluginPrivateAPI).articleSaver.fixSavedFilePaths,
+    ).not.toHaveBeenCalled();
+
+    settled.mockReturnValue(true);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
+    expect(
+      (plugin as unknown as PluginPrivateAPI).articleSaver.fixSavedFilePaths,
+    ).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("persists savedFilePath when an article is saved", async () => {
@@ -2220,14 +2262,21 @@ describe("saveSettings()", () => {
     vi.clearAllMocks();
   });
 
-  it("calls saveData with current settings", async () => {
-    // When: saveSettings is called
+  it("calls saveData with the shared settings, keeping this device's layout local", async () => {
+    plugin.settings.viewStyle = "card";
+    plugin.settings.allArticlesPageSize = 75;
+
     await plugin.saveSettings();
 
-    // Then: saveData should be called with settings
-    expect(plugin.saveData).toHaveBeenCalledWith(
-      expect.objectContaining(plugin.settings),
-    );
+    const calls = vi.mocked(plugin.saveData).mock.calls;
+    const saved = calls[calls.length - 1]?.[0] as Record<string, unknown>;
+    expect(saved).toMatchObject({ refreshInterval: plugin.settings.refreshInterval });
+    expect(saved).not.toHaveProperty("viewStyle");
+    expect(saved).not.toHaveProperty("allArticlesPageSize");
+    expect(saved).not.toHaveProperty("lastGlobalRefreshCompletedAt");
+    expect(plugin.app.loadLocalStorage("rss-reader-device-state")).toMatchObject({
+      settings: { viewStyle: "card", allArticlesPageSize: 75 },
+    });
   });
 
   it("saves modified settings", async () => {

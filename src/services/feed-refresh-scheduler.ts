@@ -8,6 +8,7 @@ import {
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const ACTIVE_BATCH_RECHECK_MS = 1_000;
+const NOT_ALLOWED_RECHECK_MS = 60_000;
 
 export interface FeedRefreshSchedulerOptions {
   getFeeds: () => Feed[];
@@ -16,6 +17,12 @@ export interface FeedRefreshSchedulerOptions {
   isBatchRunning: () => boolean;
   requestGlobalRefresh: () => Promise<void>;
   requestDueFeeds: (feeds: Feed[]) => Promise<void>;
+  /**
+   * Whether automatic refreshes may run right now: on this device at all,
+   * and only once Obsidian Sync has settled. A due refresh that may not run
+   * is looked at again a minute later.
+   */
+  canRun?: () => boolean;
 }
 
 /** Owns one rearmable timer for automatic, per-feed refresh scheduling. */
@@ -88,6 +95,14 @@ export class FeedRefreshScheduler {
 
   private async handleWakeup(): Promise<void> {
     if (!this.started) {
+      return;
+    }
+
+    if (this.options.canRun && !this.options.canRun()) {
+      this.timeoutId = window.setTimeout(() => {
+        this.timeoutId = null;
+        void this.handleWakeup();
+      }, NOT_ALLOWED_RECHECK_MS);
       return;
     }
 
